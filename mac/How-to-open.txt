@@ -11,8 +11,9 @@ superpack for Mac — apps made by alva. Free and open source (MIT).
 
 3. Pick your apps and click Install. They go into Applications.
 
-Inside: the player (video and audio), The Prompterinator (teleprompter that follows your voice)
-and No More Writing (talk instead of typing — it also downloads its AI models while installing).
+Inside: the player (video and audio), Foldernator (a Finder alternative with status colours and themes),
+The Prompterinator (teleprompter that follows your voice) and No More Writing (talk instead of typing —
+it also downloads its AI models while installing).
 
 No More Writing asks once for Microphone, Accessibility and Input Monitoring: that's how it hears you,
 types for you, and listens for its shortcut. Everything runs on your Mac; nothing is sent anywhere.
