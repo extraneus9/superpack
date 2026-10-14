@@ -17,7 +17,12 @@ FROZEN = bool(getattr(sys, "frozen", False))
 ROOT = Path(__file__).parent
 # the folder the .exe sits in (superpack drops a superpack.json here)
 APP_DIR = Path(sys.executable).parent if FROZEN else ROOT
-USER_DIR = (Path(os.environ.get("APPDATA") or Path.home()) / "NoMoreWriting") if FROZEN else ROOT
+if not FROZEN:
+    USER_DIR = ROOT
+elif sys.platform == "darwin":
+    USER_DIR = Path.home() / "Library" / "Application Support" / "NoMoreWriting"
+else:
+    USER_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "NoMoreWriting"
 PACKED = (APP_DIR / "superpack.json").exists()
 
 

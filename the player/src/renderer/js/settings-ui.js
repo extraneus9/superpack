@@ -35,14 +35,14 @@ export function renderSettings(s, env) {
       <div class="s-row"><span>Autoplay <small>(A)</small></span>${seg('startPaused', String(s.startPaused !== false), [['false', 'On'], ['true', 'Off · wait for Play']])}</div>
       <div class="s-row"><span>Window motion</span>${seg('windowMotion', s.windowMotion || 'smooth', [['instant', 'Instant'], ['smooth', 'Smooth'], ['cinematic', 'Cinematic']])}</div>
       <p class="s-note">How the window appears and closes. Smooth is light on any PC; Cinematic adds depth and a soft focus pull, for powerful PCs.</p>
-      ${toggle('stayReady', s.stayReady !== false, 'Stay ready after closing', 'Opens files almost instantly. Closing hides the player instead of quitting; quit from its icon next to the clock.')}
-      ${toggle('startWithWindows', s.startWithWindows !== false, 'Start with Windows, in the background', 'So the first file of the day opens instantly too. Only while "Stay ready" is on.')}
+      ${toggle('stayReady', s.stayReady !== false, 'Stay ready after closing', 'Opens files almost instantly. Closing hides the player instead of quitting; quit from its icon next to the clock.'.replace('next to the clock', env.platform === 'darwin' ? 'in the menu bar' : 'next to the clock'))}
+      ${env.platform === 'darwin' ? '' : toggle('startWithWindows', s.startWithWindows !== false, 'Start with Windows, in the background', 'So the first file of the day opens instantly too. Only while "Stay ready" is on.')}
     </section>
 
     <section><h3>Home page</h3>
       ${toggle('homeRows.played', (s.homeRows || {}).played !== false, 'Recently played', 'Everything you played here, newest first.')}
       ${toggle('homeRows.downloads', (s.homeRows || {}).downloads !== false, 'Recent downloads', 'Video and audio in Downloads and its folders, newest first.')}
-      ${toggle('homeRows.pc', (s.homeRows || {}).pc !== false, 'Recent on this PC', 'Video and audio Windows lists as recently opened, in any app.')}
+      ${env.platform === 'darwin' ? '' : toggle('homeRows.pc', (s.homeRows || {}).pc !== false, 'Recent on this PC', 'Video and audio Windows lists as recently opened, in any app.')}
     </section>
 
     <section><h3>Colour and type</h3>
@@ -75,14 +75,14 @@ export function renderSettings(s, env) {
       <div class="s-path"><span title="${esc(s.snapshotDir)}">${esc(s.snapshotDir)}</span><button class="s-btn" data-act="snap-folder">Change</button></div>
     </section>
 
-    <section><h3>Windows</h3>
+    ${env.platform === 'darwin' ? '' : `<section><h3>Windows</h3>
       <button class="s-btn wide accent" data-act="register-default">Set as my default player</button>
       <p class="s-note">Registers the player for every video and audio format and opens Windows Settings. Choose <b>the player</b> there once.</p>
       <button class="s-btn wide" data-act="shortcuts">Add Start menu and desktop shortcuts</button>
-    </section>
+    </section>`}
 
     <section class="s-about"><h3>Engine</h3>
-      <p class="s-note">${env.ffmpeg ? `FFmpeg ready · conversion on ${env.encoder === 'h264_nvenc' ? 'the GPU (NVENC)' : 'the CPU'}` : 'FFmpeg not found. Only formats Windows can decode will play.'}</p>
+      <p class="s-note">${env.ffmpeg ? `FFmpeg ready · conversion on ${env.encoder === 'h264_nvenc' ? 'the GPU (NVENC)' : env.encoder === 'h264_videotoolbox' ? 'the GPU (VideoToolbox)' : 'the CPU'}` : `FFmpeg not found. Only formats ${env.platform === 'darwin' ? 'macOS' : 'Windows'} can decode will play.`}</p>
     </section>
   </div>`;
 }

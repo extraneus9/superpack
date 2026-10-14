@@ -4,5 +4,6 @@ __pycache__/
 dist/
 build/
 bin/
+out/
 config.json
 history.jsonl

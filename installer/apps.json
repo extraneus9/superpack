@@ -1,0 +1,57 @@
+{
+  "player": {
+    "desc": "Plays every video and audio format.",
+    "lead": "A modern video and audio player that opens anything — MP4, MKV, MOV, AVI, FLAC, WAV and more — in a blink.",
+    "points": [
+      "Three looks to choose from: Glass, Edit Bay and alva.",
+      "A home page with your recent videos, downloads and files as a moving showreel. Turn each row on or off.",
+      "Autoplay on or off: files open playing, or paused until you press play.",
+      "Window motion: instant, smooth or cinematic.",
+      "Stays ready in the background, so files open almost instantly.",
+      "File details for any file — streams, colour, HDR, chapters — one click to copy.",
+      "Keyboard shortcuts for everything."
+    ],
+    "note": "Can become your video & audio player in Windows."
+  },
+  "foldernator": {
+    "desc": "A file explorer with status colours and themes.",
+    "lead": "A file explorer for Windows that does what Explorer does — and looks the way you want.",
+    "points": [
+      "Status colours on folders, so you see where every project stands at a glance.",
+      "Themes, including a real see-through Liquid Glass — or build your own.",
+      "Choose your folder and icon styles.",
+      "Fluidity: no motion, smooth or liquid.",
+      "Media details for any video or audio file (Ctrl+I).",
+      "Your Quick access pins, Home and This PC, just like Windows."
+    ],
+    "note": "Folder colours show in Windows' own Explorer too."
+  },
+  "prompterinator": {
+    "desc": "A teleprompter that follows your voice.",
+    "lead": "A teleprompter that scrolls as you speak. It listens on your PC — nothing goes online.",
+    "points": [
+      "Voice follow keeps your place while you talk. Or set a speed and go.",
+      "Mirror the text for a glass prompter, or send it to a second screen.",
+      "Fonts, sizes, colours, margins and the reading band — all adjustable.",
+      "Give every speaker their own colour.",
+      "Countdown, on-screen clock and cues for whoever is reading.",
+      "Opens Word, PDF and Excel scripts.",
+      "Save your setups as templates."
+    ],
+    "note": "Voice downloads its speech model (about 460 MB) the first time you turn it on."
+  },
+  "nomorewriting": {
+    "desc": "Talk instead of typing.",
+    "lead": "Press a key, speak, and your words are typed for you — in any app. It all runs on your PC; nothing is sent anywhere.",
+    "points": [
+      "Pick your own shortcut (Ctrl+Alt+W to start).",
+      "It tidies what you said: punctuation, line breaks and lists.",
+      "Speed or accuracy — five levels, from instant to most precise.",
+      "Teach it your words: names, brands and your own expressions.",
+      "Style the recording overlay: theme, colour, size and where it sits.",
+      "Choose your microphone; auto level means you never have to shout.",
+      "Works in several languages."
+    ],
+    "note": "Downloads its AI models while it installs (about 5 GB). Fastest with an NVIDIA graphics card."
+  }
+}

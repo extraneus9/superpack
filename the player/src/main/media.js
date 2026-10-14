@@ -24,17 +24,28 @@ const isMedia = (f) => MEDIA_EXT.has(extOf(f));
 // ---------- binaries ----------
 // Startup speed: where FFmpeg lives and which encoder works are remembered in a small file, so launching the player
 // never waits on `where` or on a test encode. A path that has gone missing is looked up again.
-const BIN_CACHE = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'the player', 'bins.json');
+const MAC = process.platform === 'darwin';
+const EXE = process.platform === 'win32' ? '.exe' : '';
+const BIN_CACHE = MAC
+  ? path.join(os.homedir(), 'Library', 'Caches', 'the player', 'bins.json')
+  : path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'the player', 'bins.json');
 let binCache = {};
 try { binCache = JSON.parse(fs.readFileSync(BIN_CACHE, 'utf8')) || {}; } catch {}
 const saveBinCache = () => { try { fs.mkdirSync(path.dirname(BIN_CACHE), { recursive: true }); fs.writeFileSync(BIN_CACHE, JSON.stringify(binCache)); } catch {} };
 
 function findBin(name) {
   // the installed app may carry its own FFmpeg (superpack: resources/ffmpeg) — that one always wins
-  const bundled = process.resourcesPath ? path.join(process.resourcesPath, 'ffmpeg', name + '.exe') : null;
+  const bundled = process.resourcesPath ? path.join(process.resourcesPath, 'ffmpeg', name + EXE) : null;
   if (bundled && fs.existsSync(bundled)) return bundled;
   if (binCache[name] && fs.existsSync(binCache[name])) return binCache[name];
   let found = null;
+  if (MAC) {
+    // apps opened from Finder don't get the shell's PATH: look where Homebrew and MacPorts put it, then PATH
+    const dirs = ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', ...(process.env.PATH || '').split(':')];
+    found = dirs.map((d) => d && path.join(d, name)).find((p) => p && fs.existsSync(p)) || null;
+    if (found && binCache[name] !== found) { binCache[name] = found; saveBinCache(); }
+    return found;
+  }
   try {
     // System32's where, and only PATH ($PATH:) — never a same-named exe sitting in the opened video's folder
     const where = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'where.exe');
@@ -66,9 +77,11 @@ const encoderNow = () => encoder || 'libx264';
 function detectEncoder() {
   if (encoder || !FFMPEG) return Promise.resolve(encoderNow());
   if (!encoderJob) {
-    encoderJob = new Promise((resolve) => execFile(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', '-frames:v', '1', '-c:v', 'h264_nvenc', '-f', 'null', '-'],
+    // a Mac's hardware encoder is VideoToolbox; a PC's is NVENC (when there's an NVIDIA card)
+    const hw = MAC ? 'h264_videotoolbox' : 'h264_nvenc';
+    encoderJob = new Promise((resolve) => execFile(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', '-frames:v', '1', '-c:v', hw, '-f', 'null', '-'],
       { windowsHide: true, timeout: 15000 }, (err) => {
-        encoder = err ? 'libx264' : 'h264_nvenc';
+        encoder = err ? 'libx264' : hw;
         binCache.encoder = encoder; binCache.encoderFor = FFMPEG; saveBinCache();
         resolve(encoder);
       }));
@@ -262,6 +275,7 @@ function streamArgs(file, info, t) {
     const g = String(Math.max(12, Math.round(info.video.fps || 30)));
     args.push('-map', '0:v:0', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p');
     if (enc === 'h264_nvenc') args.push('-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'll', '-rc', 'vbr', '-cq', '19', '-b:v', '0', '-g', g);
+    else if (enc === 'h264_videotoolbox') args.push('-c:v', 'h264_videotoolbox', '-b:v', '12M', '-realtime', '1', '-g', g);
     else args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-g', g);
   } else args.push('-vn');
   if (info.audio) args.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', '256k', '-ac', '2');

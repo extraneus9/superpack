@@ -14,7 +14,9 @@ Self-test: python voice_server.py --selftest        (no mic; feeds canned phrase
 from __future__ import annotations
 import argparse, asyncio, json, os, queue, sys, threading, time, http.server, socketserver, functools, webbrowser, io
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stdout is not None and hasattr(sys.stdout, "buffer"):  # a windowed app (Mac .app) has no console
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+LAST_ACTIVITY = time.time()  # last page request or voice connection (idle shutdown, see main_async)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(ROOT, "app")
 CONFIG_PATH = os.path.join(ROOT, "config.json")
@@ -125,6 +127,8 @@ class VoiceEngine:
         from faster_whisper import WhisperModel
         self.on_event({"type": "status", "state": "loading", "msg": f"loading model {name}…"})
         try:
+            if sys.platform == "darwin":
+                raise RuntimeError("no CUDA on a Mac")  # straight to the CPU build (fast on Apple Silicon)
             self.model = WhisperModel(name, device="cuda", compute_type="float16")
             dev = "cuda"
         except Exception:
@@ -243,6 +247,8 @@ class Bridge:
         for d in dead: self.clients.discard(d)
 
     async def handler(self, ws):
+        global LAST_ACTIVITY
+        LAST_ACTIVITY = time.time()
         self.clients.add(ws)
         devs, err = list_input_devices()
         await ws.send(json.dumps({"type": "hello", "app": "prompter-voice", "v": 1,
@@ -274,6 +280,7 @@ class Bridge:
             pass
         finally:
             self.clients.discard(ws)
+            LAST_ACTIVITY = time.time()  # the idle clock starts when the page lets go
 
     async def _fake_stream(self):
         """--selftest: canned phrases so the whole client path can be verified without a mic."""
@@ -323,6 +330,8 @@ def serve_app(cfg):
         def __init__(self, *a, **kw): super().__init__(*a, directory=APP_DIR, **kw)
         def log_message(self, *a): pass
         def do_GET(self):
+            global LAST_ACTIVITY
+            LAST_ACTIVITY = time.time()
             if self.path.split("?")[0] in ("/engine.json", "/engine"):
                 body = json.dumps(info).encode()
                 self.send_response(200); self.send_header("Content-Type", "application/json")
@@ -354,7 +363,14 @@ async def main_async(cfg, selftest):
         if cfg.get("open_browser") and not selftest:
             try: webbrowser.open(url)
             except Exception: pass
-        await asyncio.Future()
+        # a windowed app has no console to close: it ends itself after `idle_exit_min` minutes with no page
+        # requests and no voice connection (reopening the app starts it again)
+        idle = float(cfg.get("idle_exit_min") or 0)
+        while True:
+            await asyncio.sleep(30)
+            if idle and not bridge.clients and time.time() - LAST_ACTIVITY > idle * 60:
+                print("idle — the engine is closing")
+                return
 
 def main():
     ap = argparse.ArgumentParser()

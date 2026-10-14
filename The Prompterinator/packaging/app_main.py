@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
-"""The Prompterinator — frozen entry point. Starts the local engine and opens the app window."""
+"""The Prompterinator — frozen entry point. Starts the local engine and opens the app window.
+Windows: a small console window is the engine (close it to quit). macOS: a windowed .app with no console — the
+engine closes itself after 30 idle minutes (no page, no voice), and opening the app again brings it back."""
 import os, sys, subprocess, threading, time, webbrowser, io
+
+MAC = sys.platform == "darwin"
 
 if getattr(sys, "frozen", False):
     BASE = sys._MEIPASS
-    HOME = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "The Prompterinator")
+    if MAC:
+        HOME = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "The Prompterinator")
+    else:
+        HOME = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "The Prompterinator")
     os.makedirs(HOME, exist_ok=True)
     sys.path.insert(0, BASE)
 else:
@@ -16,26 +23,48 @@ import voice_server as VS
 VS.APP_DIR = os.path.join(BASE, "app")
 VS.CONFIG_PATH = os.path.join(HOME, "config.json")
 
+# Chromium browsers can open the prompter as its own app window (and it uses their multi-screen API)
+MAC_BROWSERS = ["Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium", "Arc"]
+
+
 def open_app_window(url):
-    for p in (os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", ""), os.environ.get("LOCALAPPDATA", "")):
-        for exe in (r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe"):
-            full = os.path.join(p, exe)
-            if p and os.path.exists(full):
-                try:
-                    subprocess.Popen([full, f"--app={url}", "--new-window", "--window-size=1440,900"])
-                    return True
-                except Exception:
-                    pass
+    if MAC:
+        for name in MAC_BROWSERS:
+            for root in ("/Applications", os.path.expanduser("~/Applications")):
+                if os.path.isdir(os.path.join(root, f"{name}.app")):
+                    try:
+                        subprocess.Popen(["/usr/bin/open", "-na", os.path.join(root, f"{name}.app"), "--args",
+                                          f"--app={url}", "--new-window", "--window-size=1440,900"])
+                        return True
+                    except Exception:
+                        pass
+    else:
+        for p in (os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", ""), os.environ.get("LOCALAPPDATA", "")):
+            for exe in (r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe"):
+                full = os.path.join(p, exe)
+                if p and os.path.exists(full):
+                    try:
+                        subprocess.Popen([full, f"--app={url}", "--new-window", "--window-size=1440,900"])
+                        return True
+                    except Exception:
+                        pass
     try:
         webbrowser.open(url); return True
     except Exception:
         return False
 
+
 def msgbox(title, text):
     try:
-        import ctypes; ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
+        if MAC:
+            esc = lambda t: t.replace("\\", "\\\\").replace('"', '\\"')
+            subprocess.run(["/usr/bin/osascript", "-e",
+                            f'display dialog "{esc(text)}" with title "{esc(title)}" buttons {{"OK"}} with icon caution'], check=False)
+        else:
+            import ctypes; ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
     except Exception:
         print(title, text)
+
 
 def main():
     cfg = VS.load_config()
@@ -45,10 +74,13 @@ def main():
         open_app_window(existing)
         print("The Prompterinator is already running — opened its window."); time.sleep(2); return
     cfg["open_browser"] = False
-    try:
-        os.system("title The Prompterinator - engine")
-    except Exception:
-        pass
+    if MAC:
+        cfg["idle_exit_min"] = 30
+    else:
+        try:
+            os.system("title The Prompterinator - engine")
+        except Exception:
+            pass
     VS.serve_app(cfg)
     url = f'http://127.0.0.1:{cfg["http_port"]}/index.html'
     threading.Thread(target=lambda: (time.sleep(1.2), open_app_window(url)), daemon=True).start()

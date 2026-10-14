@@ -212,6 +212,7 @@ class App(ctk.CTk):
         # the user can hit Skip to defer setup. No-op on Windows / Linux.
         if IS_MAC:
             self._run_mac_bootstrap_if_needed()
+            self._ask_mac_accessibility_if_needed()
 
         # Engine in a worker thread — heavy loads block the UI otherwise.
         # Started via after() so the thread only runs once mainloop() is live:
@@ -511,6 +512,27 @@ class App(ctk.CTk):
             HISTORY_PATH.unlink()
 
     # ---------- macOS first-launch bootstrap ----------
+
+    def _ask_mac_accessibility_if_needed(self):
+        """macOS: pasting the text for you (a synthetic Cmd+V) needs Accessibility permission, and the global hotkey
+        needs Input Monitoring. Without them both fail silently — so the first time, say so and open the right pane."""
+        try:
+            import ctypes
+            ax = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+            ax.AXIsProcessTrusted.restype = ctypes.c_bool
+            if ax.AXIsProcessTrusted():
+                return
+        except Exception as e:
+            print(f"[permissions] check failed: {e}")
+            return
+        from tkinter import messagebox
+        messagebox.showinfo(
+            "One permission, once",
+            "To type your words into other apps, No More Writing needs Accessibility permission.\n\n"
+            "System Settings opens now: turn on No More Writing under Privacy & Security › Accessibility "
+            "(and under Input Monitoring, for the shortcut). Then reopen the app.",
+        )
+        subprocess.run(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"], check=False)
 
     def _run_mac_bootstrap_if_needed(self):
         """Show the MacBootstrapDialog if Ollama / the cleanup model is missing.
@@ -2071,6 +2093,19 @@ def main():
     # dictation never stalls on a 1.6 GB download. Prints what it loaded and exits; no window, no hotkey.
     if len(sys.argv) > 1 and sys.argv[1] == "--prefetch":
         log = USER_DIR / "prefetch.log"  # a windowed .exe has no console: the installer (and QA) read this
+        USER_DIR.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "darwin":
+            # macOS runs whisper.cpp (Metal): loading the model once downloads it into pywhispercpp's cache
+            try:
+                from engine import _WhisperCppBackend
+                import numpy as _np
+                b = _WhisperCppBackend(print)
+                b.transcribe(_np.zeros(16000, dtype=_np.float32))
+                log.write_text("ok whisper.cpp metal\n", encoding="utf-8")
+            except Exception as e:
+                log.write_text(f"error {e}\n", encoding="utf-8")
+                sys.exit(1)
+            return
         try:
             from engine import _detect_device_and_model
             device, model_name, compute = _detect_device_and_model()

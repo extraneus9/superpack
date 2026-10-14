@@ -1,0 +1,11 @@
+{
+  "mode": "pack",
+  "title": "superpack",
+  "windowIcon": "icons/superpack.ico",
+  "apps": [
+    { "key": "player", "name": "the player", "desc": "Plays every video and audio format.", "bytes": 834666496, "size": "796 MB", "exe": "the player\\the player.exe" },
+    { "key": "foldernator", "name": "Foldernator", "desc": "A file explorer with status colours and themes.", "bytes": 385875968, "size": "368 MB", "exe": "Foldernator\\Foldernator.exe" },
+    { "key": "prompterinator", "name": "The Prompterinator", "desc": "A teleprompter that follows your voice.", "bytes": 274726912, "size": "262 MB", "exe": "The Prompterinator\\Prompterinator.exe" },
+    { "key": "nomorewriting", "name": "No More Writing", "desc": "Talk instead of typing.", "bytes": 3435973836, "size": "3.2 GB", "extra": "+ 5 GB of AI models", "exe": "No More Writing\\NoMoreWriting.exe" }
+  ]
+}

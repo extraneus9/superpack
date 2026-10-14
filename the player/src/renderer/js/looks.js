@@ -86,7 +86,7 @@ function editbay(ctx) {
     <div class="e-tb drag">
       ${backPill('dark')}
       <span class="menu"><button class="nd" data-act="open">Open</button><button class="nd" data-act="details" title="File details  (D)">Details</button><button class="nd" data-act="settings">Settings</button></span>
-      <span class="path" title="${esc(info.path)}">${esc(info.dir)}\\<b>${esc(info.name)}</b></span>${winButtons()}</div>
+      <span class="path" title="${esc(info.path)}">${esc(info.dir)}${navigator.userAgent.includes('Mac') ? '/' : '\\'}<b>${esc(info.name)}</b></span>${winButtons()}</div>
     <div class="e-main">
       <div class="e-view"><div class="slot" data-slot="stage" data-act="toggle-click"></div>
         <div class="e-hud">${v && v.aspect ? `<span>${esc(v.aspect)}</span>` : ''}<span data-bind="fit-word">FIT</span><span class="rec" data-bind="loop-word" hidden>LOOP A–B</span><span class="conv" data-bind="conv-word" hidden>CONVERTED LIVE</span></div></div>

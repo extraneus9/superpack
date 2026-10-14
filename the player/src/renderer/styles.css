@@ -529,3 +529,7 @@ body.dragging #drop { opacity: 1; transform: none; transition: opacity .25s var(
   *, *::before, *::after { transition: none !important; animation: none !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* macOS: the window keeps its own traffic lights (top-left), so the drawn Windows buttons go and the bars make room */
+body.mac .wc { display: none; }
+body.mac .g-top, body.mac .e-tb, body.mac .a-tb, body.mac .h-top { padding-left: 84px; }

@@ -553,6 +553,8 @@ class _WhisperCppBackend:
         "medium": "medium",
         "large": "large-v3",
         "large-v3": "large-v3",
+        "large-v3-turbo": "large-v3-turbo",
+        "turbo": "large-v3-turbo",
         "large-v2": "large-v2",
     }
 

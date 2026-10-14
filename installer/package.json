@@ -1,0 +1,9 @@
+{
+  "name": "superpack-setup",
+  "productName": "superpack setup",
+  "version": "0.2.0",
+  "private": true,
+  "description": "The superpack installer window. Runs the Inno setup silently underneath and shows its progress.",
+  "main": "main.js",
+  "author": "alva"
+}

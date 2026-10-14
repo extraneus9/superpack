@@ -1,0 +1,17 @@
+{
+  "lineHeight": 1.25,
+  "ratios": {
+    "superpack": 3.4067,
+    "thanks": 3.6067,
+    "all-set": 2.3,
+    "not-done": 4.1067,
+    "n-player": 3.14,
+    "n-foldernator": 3.6867,
+    "n-prompterinator": 6.1533,
+    "n-nomorewriting": 5.4533,
+    "t-player": 3.2867,
+    "t-foldernator": 3.8267,
+    "t-prompterinator": 6.3,
+    "t-nomorewriting": 5.6467
+  }
+}

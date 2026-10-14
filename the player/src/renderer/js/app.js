@@ -805,6 +805,7 @@ const mark = (k) => { if (S.marks[k] == null) S.marks[k] = Math.round(performanc
 (async function boot() {
   S.env = await api.init();
   mark('init');
+  document.body.classList.toggle('mac', S.env.platform === 'darwin');
   S.settings = S.env.settings;
   S.engine = new Engine(video, S.env.base);
   S.home = new Home($('#home'), { api, env: S.env, settings: () => S.settings });

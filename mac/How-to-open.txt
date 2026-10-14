@@ -1,0 +1,21 @@
+superpack for Mac — apps made by alva. Free and open source (MIT).
+
+1. Double-click "Install superpack".
+
+2. The first time, macOS says it can't check the app ("Apple could not verify…").
+   That's because it's free and open source, not sold through Apple. To open it:
+     • click Done (not Move to Trash),
+     • open System Settings › Privacy & Security,
+     • scroll down and click "Open Anyway" next to "Install superpack", then confirm.
+   You only do this once. The apps it installs open normally after that.
+
+3. Pick your apps and click Install. They go into Applications.
+
+Inside: the player (video and audio), The Prompterinator (teleprompter that follows your voice)
+and No More Writing (talk instead of typing — it also downloads its AI models while installing).
+
+No More Writing asks once for Microphone, Accessibility and Input Monitoring: that's how it hears you,
+types for you, and listens for its shortcut. Everything runs on your Mac; nothing is sent anywhere.
+
+Needs: a Mac with Apple Silicon (M1 or newer), macOS 13 or newer.
+The code: https://github.com/extraneus9/superpack

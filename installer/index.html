@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'">
+<title>superpack</title>
+<link rel="stylesheet" href="ui.css">
+</head><body class="welcome enter">
+<div class="drag"></div>
+<div class="wc"><button id="min" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button><button id="close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button></div>
+
+<section id="welcome">
+  <div class="w-text">
+    <div class="kicker" id="w-kicker"></div>
+    <div class="w-title"><img class="ogg" src="assets/type/thanks.png" alt="Thank you."></div>
+    <p id="w-p1"></p>
+    <p id="w-p2"></p>
+    <ul class="chips"><li>Made by hand</li><li>Free</li><li>Yours to customise</li><li class="link" id="oss" title="github.com/extraneus9/superpack">Open source ↗</li></ul>
+    <img class="tag" src="assets/tag.png" alt="alva">
+  </div>
+  <div class="w-art" id="w-art"></div>
+</section>
+
+<header><div id="title"></div><div id="hint"></div></header>
+<main id="grid"></main>
+<section id="opts"></section>
+<footer><div id="sum"></div><div class="actions"><button id="alt" class="ghost" hidden></button><button id="go" class="go"></button></div></footer>
+
+<div id="sheet" aria-hidden="true">
+  <div class="scrim"></div>
+  <div class="card" role="dialog" aria-modal="true">
+    <div class="c-head"><img class="ic" id="c-ic" alt=""><div><div id="c-name"></div><div class="c-desc" id="c-desc"></div></div></div>
+    <p class="c-lead" id="c-lead"></p>
+    <div class="kicker">Make it yours</div>
+    <ul class="c-points" id="c-points"></ul>
+    <p class="c-note" id="c-note"></p>
+    <div class="c-foot"><span id="c-size"></span><div class="actions"><button class="ghost" id="c-close">Close</button><button class="go" id="c-pick"></button></div></div>
+  </div>
+</div>
+<script src="ui.js"></script>
+</body></html>

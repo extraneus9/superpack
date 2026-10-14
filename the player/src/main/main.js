@@ -18,7 +18,8 @@ if (QA) app.commandLine.appendSwitch('mute-audio');
 const APP_NAME = 'the player';
 const OLD_NAME = 'alva player'; // the name before 2026-10-13: settings and shortcuts carry over from it
 if (process.env.ALVA_USER_DATA) app.setPath('userData', process.env.ALVA_USER_DATA);
-app.setAppUserModelId('alva.player');
+const MAC = process.platform === 'darwin';
+if (process.platform === 'win32') app.setAppUserModelId('alva.player');
 
 const APP_DIR = path.join(__dirname, '..', '..');
 const ICON = path.join(APP_DIR, 'assets', 'icon.ico');
@@ -202,7 +203,10 @@ function ensureTray() {
 function applyLoginItem() {
   if (QA || !app.isPackaged) return;
   const s = settings.get();
-  try { app.setLoginItemSettings({ openAtLogin: s.stayReady !== false && s.startWithWindows !== false, path: process.execPath, args: ['--background'] }); } catch {}
+  const on = s.stayReady !== false && s.startWithWindows !== false;
+  // (a Mac starts login items visibly and can't pass --background: only the Windows build starts itself)
+  if (MAC) { try { app.setLoginItemSettings({ openAtLogin: false }); } catch {} return; }
+  try { app.setLoginItemSettings({ openAtLogin: on, path: process.execPath, args: ['--background'] }); } catch {}
 }
 
 async function createWindow() {
@@ -212,6 +216,8 @@ async function createWindow() {
     ...b,
     minWidth: MIN_W, minHeight: MIN_H,
     frame: false, backgroundColor: '#000000', show: false,
+    // a Mac keeps its own traffic lights (the page hides its Windows-style buttons and makes room for them)
+    ...(MAC ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 14 } } : {}),
     icon: fs.existsSync(ICON) ? ICON : undefined,
     title: APP_NAME,
     webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false },
@@ -265,6 +271,16 @@ function openInWindow(file) {
 }
 
 app.on('second-instance', (_e, argv) => { if (!argv.includes('--background')) openInWindow(fileFromArgs(argv)); });
+// macOS hands files over with an event, not on the command line — double-click in Finder, Open With, drop on the Dock
+// icon. It can arrive before the window exists (the app was launched BY the file): then it waits for the page.
+app.on('open-file', (e, file) => {
+  e.preventDefault();
+  if (!media.isMedia(file)) return;
+  if (!win || win.isDestroyed()) { pendingFile = file; return; }
+  openInWindow(file);
+});
+// clicking the Dock icon while the player is staying ready in the background brings it back
+app.on('activate', () => { if (win && !win.isDestroyed()) (win.isVisible() ? win.focus() : wake(null)); });
 
 // ---------- IPC ----------
 ipcMain.handle('init', async () => {
@@ -273,7 +289,7 @@ ipcMain.handle('init', async () => {
   return {
     settings: settings.get(), base: media.base(), port, file: f, background: BACKGROUND && !f,
     ffmpeg: !!media.FFMPEG, ffprobe: !!media.FFPROBE, encoder: media.encoderNow(),
-    videoExt: media.VIDEO_EXT, audioExt: media.AUDIO_EXT, qa: QA, packaged: app.isPackaged,
+    videoExt: media.VIDEO_EXT, audioExt: media.AUDIO_EXT, qa: QA, packaged: app.isPackaged, platform: process.platform,
   };
 });
 ipcMain.handle('probe', async (_e, raw) => {

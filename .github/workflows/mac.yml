@@ -1,0 +1,45 @@
+# superpack for Mac — built in the open on GitHub's own Macs, from this repo's code. Unsigned on purpose.
+# Run it from the Actions tab (Run workflow). The .dmg, the installer test screenshots and the logs come out as artifacts.
+name: superpack for Mac
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-14   # Apple Silicon
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build and test
+        run: bash mac/build.sh
+
+      - name: The .dmg
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: superpack-for-mac
+          path: out/superpack for Mac.dmg
+          compression-level: 0
+
+      - name: Test screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            out/shots/
+            out/*.log
+          if-no-files-found: ignore
