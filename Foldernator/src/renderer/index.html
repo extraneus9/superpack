@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: thumb: ficon: data: blob: chrome-extension:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: thumb: ficon: data: blob:; media-src 'self' file: blob:">
+  <title>Foldernator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Liquid Glass refraction: a lens-shaped displacement map (generated in js/glass.js) bends what sits behind menus and dialogs. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="lg-refract" x="0" y="0" width="100%" height="100%" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+      <feImage id="lg-map" x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="map"/>
+      <feDisplacementMap in="SourceGraphic" in2="map" scale="0.06" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </svg>
+  <div id="glass-live" aria-hidden="true"><video muted playsinline></video><canvas class="glass-freeze"></canvas></div>
+  <div id="bg-layer"></div>
+  <div id="app">
+    <header id="titlebar">
+      <div id="tabs" role="tablist"></div>
+      <button id="new-tab" class="icon-btn" title="New tab (Ctrl+T)"></button>
+      <div class="drag-fill"></div>
+    </header>
+    <div id="toolbar">
+      <div id="addressbar">
+        <div class="nav-buttons">
+          <button class="icon-btn" data-cmd="back" title="Back (Alt+Left)"></button>
+          <button class="icon-btn" data-cmd="forward" title="Forward (Alt+Right)"></button>
+          <button class="icon-btn" data-cmd="up" title="Up (Alt+Up)"></button>
+          <button class="icon-btn" data-cmd="refresh" title="Refresh (F5)"></button>
+        </div>
+        <div id="crumbs" class="field" title="Click to type a path (Ctrl+L)"></div>
+        <label id="search" class="field">
+          <span class="search-icon"></span>
+          <input id="search-input" type="text" spellcheck="false" placeholder="Search">
+          <button id="search-clear" class="icon-btn small" title="Clear (Esc)"></button>
+        </label>
+      </div>
+      <div id="commandbar"></div>
+    </div>
+    <main id="body">
+      <nav id="sidebar" class="panel" data-panel="sidebar">
+        <div class="panel-head" data-panel="sidebar"></div>
+        <div class="side-scroll"></div>
+      </nav>
+      <div class="splitter" data-split="sidebar"></div>
+      <section id="content">
+        <div id="view" tabindex="0"></div>
+      </section>
+      <div class="splitter" data-split="preview"></div>
+      <aside id="preview" class="panel" data-panel="preview">
+        <div class="panel-head" data-panel="preview"></div>
+        <div class="pv-scroll"></div>
+      </aside>
+    </main>
+    <footer id="statusbar"></footer>
+  </div>
+  <div id="dock-overlay"></div>
+  <div id="menus"></div>
+  <div id="toasts"></div>
+  <div id="modal-root"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

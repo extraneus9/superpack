@@ -1,0 +1,108 @@
+// Bridge between the sandboxed UI and the main process.
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+const inv = (ch) => (...args) => ipcRenderer.invoke(ch, ...args);
+const on = (ch) => (fn) => {
+  const listener = (e, payload) => fn(payload);
+  ipcRenderer.on(ch, listener);
+  return () => ipcRenderer.removeListener(ch, listener);
+};
+
+contextBridge.exposeInMainWorld('api', {
+  init: inv('app:init'),
+  patchSettings: inv('settings:patch'),
+  setSetting: inv('settings:set'),
+  resetSettings: inv('settings:reset'),
+  windowChrome: inv('window:chrome'),
+  devtools: inv('window:devtools'),
+
+  list: inv('fs:list'),
+  peek: inv('fs:peek'),
+  peekReset: inv('fs:peekReset'),
+  viewerOpen: inv('viewer:open'),
+  viewerData: inv('viewer:data'),
+  viewerClose: inv('viewer:close'),
+  imageRotate: inv('image:rotate'),
+  imageCrop: inv('image:crop'),
+  setWallpaper: inv('image:wallpaper'),
+  copyImage: inv('image:copy'),
+  readImage: inv('image:read'),
+  writeDropped: inv('fs:writeDropped'),
+  resolveRelativeDrop: inv('drop:resolveRelative'),
+  log: (...a) => ipcRenderer.send('log', ...a.map(String)),
+  writeImage: inv('image:write'),
+  onViewerLoad: on('viewer:load'),
+  viewerShown: (p) => ipcRenderer.send('viewer:shown', p),
+  onViewerShown: on('viewer:shown'),
+  drives: inv('fs:drives'),
+  onDrivesChanged: on('drives:changed'),
+  portable: inv('portable:list'),
+  shellList: inv('shell:list'),
+  shellInvoke: inv('shell:invoke'),
+  shellCopy: inv('shell:copy'),
+  mountImage: inv('disk:mount'),
+  ejectDrive: inv('disk:eject'),
+  exists: inv('fs:exists'),
+  stat: inv('fs:stat'),
+  readText: inv('fs:readText'),
+  mkdir: inv('fs:mkdir'),
+  newFile: inv('fs:newFile'),
+  rename: inv('fs:rename'),
+  fileOp: inv('fs:op'),
+
+  searchStart: inv('search:start'),
+  searchCancel: inv('search:cancel'),
+  quickAccess: inv('quickaccess:get'),
+  galleryStart: inv('gallery:start'),
+
+  open: inv('shell:open'),
+  openWith: inv('shell:openWith'),
+  properties: inv('shell:properties'),
+  mediaDetails: inv('media:details'),
+  reveal: inv('shell:reveal'),
+  explorerOpen: inv('shell:explorerOpen'),
+  readLink: inv('shell:readLink'),
+  terminal: inv('shell:terminal'),
+  nativeMenu: inv('shell:contextMenu'),
+
+  setClipboardFiles: inv('clipboard:setFiles'),
+  getClipboardFiles: inv('clipboard:getFiles'),
+  copyText: inv('clipboard:text'),
+
+  startDrag: (paths) => ipcRenderer.send('drag:start', paths),
+  lastDrag: inv('drag:last'),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+
+  hasIcon: inv('icons:has'),
+  writeIcon: inv('icons:write'),
+
+  setStatus: inv('status:set'),
+  statusSeen: inv('status:seen'),
+  statusBoard: inv('status:board'),
+  driveCheck: inv('drive:check'),
+  driveChildColors: inv('drive:childColors'),
+  driveDeep: inv('drive:deep'),
+  onDriveItem: on('drive:item'),
+  onDriveProgress: on('drive:progress'),
+  onDriveDone: on('drive:done'),
+  driveMapped: inv('drive:check'),
+
+  watch: inv('watch:set'),
+  glassStart: inv('glass:start'),
+  glassStop: inv('glass:stop'),
+  glassProtect: inv('glass:protect'),
+  snipFrozen: inv('glass:snip-frozen'),
+  relaunch: inv('app:relaunch'),
+  onUpdateReady: on('app:update-ready'),
+  snipTest: inv('glass:snip-test'),
+  onSnipFreeze: on('glass:snip-freeze'),
+  onSnipUnfreeze: on('glass:snip-unfreeze'),
+  onGlassBounds: on('glass:bounds'),
+
+  onChanged: on('fs:changed'),
+  onSearchBatch: on('search:batch'),
+  onSearchDone: on('search:done'),
+  onToast: on('toast'),
+  onNav: on('nav'),
+  onOpenTabs: on('open-tabs'),
+});

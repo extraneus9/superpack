@@ -1,0 +1,17 @@
+{
+  "name": "foldernator",
+  "productName": "Foldernator",
+  "version": "0.1.0",
+  "description": "Foldernator — our own Windows file explorer: Explorer features, fully themeable, folder status colors synced to native Explorer and Google Drive.",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "helper": "node scripts/build-helper.js",
+    "shortcut": "node scripts/make-shortcut.js"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "playwright-core": "1.63.0"
+  }
+}

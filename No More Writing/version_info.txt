@@ -1,0 +1,42 @@
+# UTF-8
+#
+# Windows VERSIONINFO embedded into NoMoreWriting.exe by PyInstaller.
+# Read by Windows file-properties dialog, antivirus reputation engines, and
+# SmartScreen. Having proper metadata (vs blank "Unknown Publisher") reduces
+# heuristic false-positive flags from AV vendors.
+#
+# Spec: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(3, 0, 0, 0),
+    prodvers=(3, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,                # VOS_NT_WINDOWS32
+    fileType=0x1,              # VFT_APP
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040904B0',         # English (US) + Unicode (1200)
+          [
+            StringStruct(u'CompanyName',      u'alva'),
+            StringStruct(u'FileDescription',  u'No More Writing - Local voice dictation'),
+            StringStruct(u'FileVersion',      u'3.0.0.0'),
+            StringStruct(u'InternalName',     u'NoMoreWriting'),
+            StringStruct(u'LegalCopyright',   u'Copyright (c) 2026 alva. MIT License.'),
+            StringStruct(u'OriginalFilename', u'NoMoreWriting.exe'),
+            StringStruct(u'ProductName',      u'No More Writing'),
+            StringStruct(u'ProductVersion',   u'3.0.0.0'),
+            StringStruct(u'Comments',         u'100% local voice dictation. No cloud, no telemetry. Open source: github.com/extraneus9/superpack'),
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)

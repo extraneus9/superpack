@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file:; style-src 'self' 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: data: blob: http://127.0.0.1:*; media-src file: blob: http://127.0.0.1:*; connect-src http://127.0.0.1:*">
+  <title>the player</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="view-boot look-glass">
+  <div id="app">
+    <section id="home" aria-label="Home"></section>
+    <section id="player" aria-label="Player"></section>
+  </div>
+
+  <!-- the one video element; moved into whichever screen is showing, parked out of the way when none has room for it -->
+  <div id="stage-park" hidden>
+    <div id="stage">
+      <video id="v" preload="auto" playsinline disablepictureinpicture></video>
+      <div class="audio-art"><div class="wv" data-scrub data-act="noop" title="Click or drag to move through the audio"><img class="wv-base" alt=""><div class="wv-clip"><div class="wv-inner"><img class="wv-fill" alt=""></div></div><div class="wv-track"><i class="wv-head"></i></div><i class="wv-ghost"><b></b></i></div><span></span></div>
+      <div class="buffering" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <video id="pv" muted preload="auto" hidden></video>
+  <div id="scrim" data-act="settings-close" hidden></div>
+  <aside id="settings" class="drawer" aria-label="Settings" hidden></aside>
+  <aside id="details" class="drawer" aria-label="File details" hidden></aside>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="drop" aria-hidden="true"><span>Drop to play</span></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

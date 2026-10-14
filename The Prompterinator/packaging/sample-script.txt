@@ -1,0 +1,12 @@
+HOST:
+Hello, and welcome. This is a sample script — replace it with your own.
+
+Paste or type your words in the editor, press Play, and the text scrolls at your pace.
+
+GUEST:
+Turn on Voice and the prompter follows you as you speak, line by line.
+
+HOST:
+Lines that start with a NAME and a colon become speakers, each with their own colour.
+
+Thanks for watching.
