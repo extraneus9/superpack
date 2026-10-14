@@ -31,6 +31,25 @@ echo "$up" | grep -q '"prompterinator"' && ok "The Prompterinator engine answers
 curl -s -o "$OUT/page.html" http://127.0.0.1:8787/index.html; grep -qi "prompterinator" "$OUT/page.html" && ok "The Prompterinator page is served" || bad "The Prompterinator page"
 kill $P 2>/dev/null; pkill -f "Google Chrome.*127.0.0.1:8787" 2>/dev/null || true
 
+# ---------- Install superpack (the real window, off-screen, into a test folder) ----------
+T="$OUT/install-test"; rm -rf "$T"
+INST="$OUT/stage/Install superpack.app"
+echo "── installer signature:"; codesign --verify --deep --strict -vv "$INST" 2>&1 | tail -4
+ls -la "$INST/Contents/MacOS" "$INST/Contents/Resources" | head -20
+export SUPERPACK_QA=1 SUPERPACK_QA_DIR="$T" SUPERPACK_SHOTS="$OUT/shots" ELECTRON_ENABLE_LOGGING=1
+"$INST/Contents/MacOS/Install superpack" --enable-logging >"$OUT/installer.log" 2>&1 &
+P=$!
+for i in $(seq 1 300); do kill -0 $P 2>/dev/null || break; sleep 1; done
+kill -0 $P 2>/dev/null && { echo "installer still running after 300 s — stopping it"; kill $P; }
+wait $P; echo "installer exit code: $? after ${i}s"
+unset SUPERPACK_QA SUPERPACK_QA_DIR SUPERPACK_SHOTS ELECTRON_ENABLE_LOGGING
+echo "── installer log:"; tail -25 "$OUT/installer.log"
+for a in "the player.app" "The Prompterinator.app" "No More Writing.app"; do
+  [ -x "$T/$a/Contents/MacOS/$(defaults read "$T/$a/Contents/Info" CFBundleExecutable 2>/dev/null)" ] && ok "installer copied $a" || bad "installer copied $a"
+done
+[ -f "$OUT/shots/e2-done.png" ] && ok "installer reached 'All set'" || bad "installer end screen ($(ls "$OUT/shots" 2>/dev/null)) $(tail -5 "$OUT/installer.log")"
+codesign --verify --deep "$T/the player.app" 2>/dev/null && ok "copied apps keep a valid signature" || bad "signature after copy"
+
 # ---------- No More Writing ----------
 NMW="$APPS/No More Writing.app/Contents/MacOS/NoMoreWriting"
 LOG="$HOME/Library/Application Support/NoMoreWriting/prefetch.log"
@@ -39,20 +58,5 @@ tmo 1200 "$NMW" --prefetch >"$OUT/nmw.log" 2>&1
 grep -q '^ok' "$LOG" 2>/dev/null && ok "No More Writing loads its speech model ($(cat "$LOG"))" || bad "No More Writing --prefetch ($(cat "$LOG" 2>/dev/null) $(tail -5 "$OUT/nmw.log"))"
 [ -f "$HOME/Library/Application Support/NoMoreWriting/config.json" ] && grep -q '"input_device": null' "$HOME/Library/Application Support/NoMoreWriting/config.json" \
   && ok "No More Writing starts from the clean default config" || bad "No More Writing clean config"
-
-# ---------- Install superpack (the real window, off-screen, into a test folder) ----------
-T="$OUT/install-test"; rm -rf "$T"
-INST="$OUT/stage/Install superpack.app"
-echo "── installer signature:"; codesign --verify --deep --strict -vv "$INST" 2>&1 | tail -4
-ls -la "$INST/Contents/MacOS" "$INST/Contents/Resources" | head -20
-SUPERPACK_QA=1 SUPERPACK_QA_DIR="$T" SUPERPACK_SHOTS="$OUT/shots" \
-  tmo 600 "$OUT/stage/Install superpack.app/Contents/MacOS/Install superpack" >"$OUT/installer.log" 2>&1
-echo "installer exit code: $?"
-log show --last 2m --style compact --predicate 'eventMessage CONTAINS "Install superpack"' 2>/dev/null | tail -15
-for a in "the player.app" "The Prompterinator.app" "No More Writing.app"; do
-  [ -x "$T/$a/Contents/MacOS/$(defaults read "$T/$a/Contents/Info" CFBundleExecutable 2>/dev/null)" ] && ok "installer copied $a" || bad "installer copied $a"
-done
-[ -f "$OUT/shots/e2-done.png" ] && ok "installer reached 'All set'" || bad "installer end screen ($(ls "$OUT/shots" 2>/dev/null)) $(tail -5 "$OUT/installer.log")"
-codesign --verify --deep "$T/the player.app" 2>/dev/null && ok "copied apps keep a valid signature" || bad "signature after copy"
 
 exit $fail
