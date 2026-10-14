@@ -744,3 +744,7 @@ body.item-dragging, body.item-dragging * { cursor: default !important; }
 #theater .th-x:hover { background: rgba(255,255,255,.18); }
 #theater .th-name { position: absolute; top: 16px; left: 18px; right: 180px; color: rgba(255,255,255,.75); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 @keyframes th-in { from { opacity: 0; transform: scale(.985); } }
+
+/* macOS: the traffic lights sit top-left, so the tab strip starts after them (Windows keeps its buttons top-right) */
+html.mac #titlebar, html.mac[data-material="liquid"][data-glass-layout="single"] #titlebar { padding-left: 82px; }
+html.mac { --overlay-w: 12px; }

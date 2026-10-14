@@ -142,8 +142,8 @@ function openSheet(k) {
   $('#c-ic').src = `assets/icons/${k}.png`;
   $('#c-name').innerHTML = ogg(`n-${k}`);
   $('#c-desc').textContent = a.desc;
-  $('#c-lead').textContent = a.lead || '';
-  $('#c-points').innerHTML = (a.points || []).map((p) => `<li>${esc(p)}</li>`).join('');
+  $('#c-lead').textContent = (mac() && a.lead_mac) || a.lead || '';
+  $('#c-points').innerHTML = ((mac() && a.points_mac) || a.points || []).map((p) => `<li>${esc(p)}</li>`).join('');
   $('#c-note').textContent = (mac() && a.note_mac) || a.note || '';
   $('#c-size').textContent = `${a.size}${a.extra ? ` ${a.extra}` : ''}`;
   paintSheet();

@@ -57,16 +57,29 @@ export function stripExt(name) {
   return i > 0 ? name.slice(0, i) : name;
 }
 
-export const isRoot = (p) => /^[a-zA-Z]:\\?$/.test(p);
-export const isFsPath = (loc) => /^[a-zA-Z]:\\/.test(loc) || /^\\\\/.test(loc);
+// Windows paths (C:\…, \\server\…) or macOS paths (/…; disks are "/" and /Volumes/<name>)
+export const IS_MAC = typeof navigator !== 'undefined' && /Macintosh/.test(navigator.userAgent);
+export const SEP = IS_MAC ? '/' : '\\';
+const MAC_ROOT = /^\/Volumes\/[^/]+\/?$/;
+
+export const isRoot = (p) => (IS_MAC ? p === '/' || MAC_ROOT.test(p) : /^[a-zA-Z]:\\?$/.test(p));
+export const isFsPath = (loc) => (IS_MAC ? typeof loc === 'string' && loc.startsWith('/') : /^[a-zA-Z]:\\/.test(loc) || /^\\\\/.test(loc));
+// a path without its trailing separator (a disk root keeps what it needs)
+export const trimSep = (p) => (IS_MAC ? (p === '/' ? p : p.replace(/\/+$/, '')) : p.replace(/\\+$/, ''));
 
 export function normDir(p) {
+  if (IS_MAC) return p === '/' ? '/' : p.replace(/\/+$/, '') || '/';
   if (/^[a-zA-Z]:$/.test(p)) return p + '\\';
   if (isRoot(p)) return p[0].toUpperCase() + ':\\';
   return p.replace(/[\\/]+$/, '').replace(/\//g, '\\');
 }
 
 export function baseName(p) {
+  if (IS_MAC) {
+    if (p === '/') return 'Macintosh HD';
+    const t = p.replace(/\/+$/, '');
+    return t.slice(t.lastIndexOf('/') + 1);
+  }
   if (isRoot(p)) return p.slice(0, 2);
   const t = p.replace(/\\+$/, '');
   return t.slice(t.lastIndexOf('\\') + 1);
@@ -74,6 +87,11 @@ export function baseName(p) {
 
 export function parentOf(p) {
   if (!isFsPath(p) || isRoot(p)) return 'thispc';
+  if (IS_MAC) {
+    const t = p.replace(/\/+$/, '');
+    const i = t.lastIndexOf('/');
+    return i <= 0 ? '/' : t.slice(0, i);
+  }
   const t = p.replace(/\\+$/, '');
   const i = t.lastIndexOf('\\');
   if (i < 0) return 'thispc';
@@ -81,10 +99,17 @@ export function parentOf(p) {
 }
 
 export function joinPath(dir, name) {
-  return dir.endsWith('\\') ? dir + name : dir + '\\' + name;
+  return dir.endsWith(SEP) ? dir + name : dir + SEP + name;
+}
+
+// the disk a path lives on: C: / \\server\share on Windows, "/" or /Volumes/<name> on a Mac
+export function diskOf(p) {
+  if (IS_MAC) { const m = /^\/Volumes\/[^/]+/.exec(p); return m ? m[0].toLowerCase() : '/'; }
+  return /^[a-zA-Z]:/.test(p) ? p[0].toLowerCase() : p.split('\\').slice(0, 4).join('\\').toLowerCase();
 }
 
 export function fileUrl(p) {
+  if (IS_MAC) return 'file://' + p.split('/').map((s) => encodeURIComponent(s)).join('/');
   const fwd = p.replace(/\\/g, '/');
   if (fwd.startsWith('//')) return 'file:' + fwd.split('/').map((s, i) => (i < 2 ? s : encodeURIComponent(s))).join('/');
   return 'file:///' + fwd.split('/').map((s, i) => (i === 0 ? s : encodeURIComponent(s))).join('/');

@@ -7,6 +7,9 @@ const fsp = fs.promises;
 const path = require('path');
 const { spawn } = require('child_process');
 const { Helper, defaultExe } = require('./helper');
+const MAC = process.platform === 'darwin';
+// on a Mac the C# ShellHelper is replaced by mac-helper.js (same calls, same replies)
+const { MacHelper } = MAC ? require('./mac-helper') : {};
 const { Settings } = require('./settings');
 const { DriveSync, PALETTE } = require('./drive');
 const { IconStore } = require('./icons');
@@ -14,7 +17,7 @@ const mediaInfo = require('./media-info');
 
 // Electron's dev-only security-warning scanner throws "Invalid URL" on our custom protocols; we ship a strict CSP anyway.
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
-app.setAppUserModelId('foldernator.app');
+if (process.platform === 'win32') app.setAppUserModelId('foldernator.app');
 if (process.env.ALVA_USER_DATA && !app.isPackaged) app.setPath('userData', process.env.ALVA_USER_DATA); // QA sandbox (dev only)
 // test runs are silent: the author works on the same machine (media still loads and plays, just never heard)
 if (process.env.ALVA_QA) app.commandLine.appendSwitch('mute-audio');
@@ -150,7 +153,7 @@ function makeDragIcon() {
   return nativeImage.createFromBitmap(buf, { width: s, height: s });
 }
 
-function isDriveRoot(p) { return /^[a-z]:\\?$/i.test(p); }
+function isDriveRoot(p) { return MAC ? p === '/' || /^\/Volumes\/[^/]+\/?$/.test(p) : /^[a-z]:\\?$/i.test(p); }
 
 // ---------- floating image viewer ----------
 // Its own window (move it to another monitor, keep it beside the folder). Reused while open.
@@ -166,7 +169,7 @@ function openViewerWindow(data) {
     minWidth: 320, minHeight: 240, show: false, title: 'Foldernator viewer',
     icon: path.join(__dirname, '..', '..', 'assets', 'app-v3.ico'),
     backgroundColor: '#0b0b0b', titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0b0b0b', symbolColor: '#e6e6e6', height: 40 },
+    ...(MAC ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: '#0b0b0b', symbolColor: '#e6e6e6', height: 40 } }),
     webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
   viewerWin.setMenu(null);
@@ -189,9 +192,9 @@ function createWindow(startPaths = []) {
     title: 'Foldernator',
     icon: path.join(__dirname, '..', '..', 'assets', 'app-v3.ico'),
     backgroundColor: '#00000000',
-    backgroundMaterial: 'mica',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#00000000', symbolColor: '#e6e6e6', height: 40 },
+    ...(MAC
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 }, vibrancy: 'under-window', visualEffectState: 'followWindow', transparent: false }
+      : { backgroundMaterial: 'mica', titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#e6e6e6', height: 40 } }),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
@@ -231,6 +234,7 @@ function createWindow(startPaths = []) {
   win.on('closed', () => { win = null; if (viewerWin && !viewerWin.isDestroyed()) viewerWin.close(); });
   const sendGlass = () => { if (liveGlass && win && !win.isDestroyed()) send('glass:bounds', glassInfo()); };
   for (const ev of ['move', 'resize', 'maximize', 'unmaximize', 'restore', 'moved']) win.on(ev, sendGlass);
+  win.on('swipe', (e, dir) => { if (dir === 'right') send('nav', 'back'); if (dir === 'left') send('nav', 'forward'); });
   win.on('app-command', (e, cmd) => {
     if (cmd === 'browser-backward') send('nav', 'back');
     if (cmd === 'browser-forward') send('nav', 'forward');
@@ -361,7 +365,8 @@ async function setStatus({ paths, status, color, skipDrive, iconStyle }) {
   for (const p of paths) {
     if (isDriveRoot(p)) { results.push({ path: p, ok: false, error: 'Drive roots can’t take a color' }); continue; }
     try {
-      const icon = color ? icons.file(color, iconStyle) : null;
+      // (the .ico is for Windows Explorer; a Mac shows the colour as a Finder tag instead)
+      const icon = color && !MAC ? icons.file(color, iconStyle) : null;
       if (icon && !fs.existsSync(icon)) throw new Error('icon missing for ' + color);
       await helper.call('setFolderStatus', { folder: p, icon, status: status || null, color: color || null });
       indexStatus(p, status, color);
@@ -527,6 +532,7 @@ function registerIpc() {
   h('window:chrome', ({ color, symbolColor, material, mode }) => {
     if (!win) return;
     if (mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode; // Mica tint + frame follow the theme
+    if (MAC) { try { win.setVibrancy(material && material !== 'none' ? 'under-window' : null); } catch {} return; }
     try { win.setTitleBarOverlay({ color, symbolColor, height: 40 }); } catch {}
     try { win.setBackgroundMaterial(material || 'none'); } catch {}
   });
@@ -546,7 +552,7 @@ function registerIpc() {
   });
   h('fs:drives', () => helper.call('drives'));
   h('portable:list', () => helper.call('portable'));
-  h('shell:explorerOpen', (p) => { spawn('explorer.exe', [p], { detached: true, stdio: 'ignore' }).unref(); return true; });
+  h('shell:explorerOpen', (p) => { spawn(MAC ? '/usr/bin/open' : 'explorer.exe', [p], { detached: true, stdio: 'ignore' }).unref(); return true; });
   h('shell:list', (p) => helper.call('shellList', { path: p }));
   h('shell:invoke', (p) => helper.call('shellInvoke', { path: p }));
   h('shell:copy', ({ paths, to }) => helper.call('shellCopy', { paths, to }));
@@ -559,10 +565,17 @@ function registerIpc() {
   });
   const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
   h('disk:mount', async (file) => {
+    if (MAC) {
+      // hdiutil mounts the image and tells where (plist), like Explorer's "Mount" gives a drive letter
+      const out = await new Promise((res, rej) => require('child_process').execFile('/usr/bin/hdiutil', ['attach', '-plist', '-nobrowse', file], (e, so) => (e ? rej(e) : res(String(so)))));
+      const m = /<key>mount-point<\/key>\s*<string>([^<]+)<\/string>/.exec(out);
+      return m ? m[1] : null;
+    }
     const letter = await ps(`$img = Mount-DiskImage -ImagePath ${q(file)} -PassThru; Start-Sleep -Milliseconds 400; ($img | Get-Volume | Select-Object -First 1).DriveLetter`);
     return letter ? letter[0] + ':\\' : null;
   });
   h('disk:eject', async (root) => {
+    if (MAC) { await new Promise((res, rej) => require('child_process').execFile('/usr/sbin/diskutil', ['eject', String(root)], (e) => (e ? rej(e) : res()))); return true; }
     const L = String(root)[0];
     // a mounted image is dismounted; a USB stick / disc goes through the shell's own Eject (safe removal)
     await ps(`$v = Get-Volume -DriveLetter ${L} -ErrorAction SilentlyContinue; $img = $null; if ($v) { $img = $v | Get-DiskImage -ErrorAction SilentlyContinue }; if ($img) { $img | Dismount-DiskImage | Out-Null } else { (New-Object -ComObject Shell.Application).Namespace(17).ParseName(${q(L + ':\\')}).InvokeVerb('Eject') }`);
@@ -595,10 +608,11 @@ function registerIpc() {
   });
   h('fs:rename', async (from, newName) => {
     newName = newName.trim();
-    if (!newName || /[<>:"/\\|?*\x00-\x1f]/.test(newName) || /[. ]$/.test(newName)) {
+    if (MAC ? !newName || /[/:]/.test(newName) : !newName || /[<>:"/\\|?*\x00-\x1f]/.test(newName) || /[. ]$/.test(newName)) {
+      if (MAC) throw new Error('A name can’t contain / or :.');
       throw new Error('A name can’t contain < > : " / \\ | ? * or end with a dot or space.');
     }
-    if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(newName)) throw new Error('That name is reserved by Windows.');
+    if (!MAC && /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(newName)) throw new Error('That name is reserved by Windows.');
     const to = path.join(path.dirname(from), newName);
     if (to.toLowerCase() !== from.toLowerCase()) {
       try { await fsp.access(to); throw new Error(`“${newName}” already exists here.`); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -629,16 +643,19 @@ function registerIpc() {
   h('shell:properties', (paths) => helper.call('properties', { paths, hwnd: win && !win.isDestroyed() ? Number(win.getNativeWindowHandle().readBigUInt64LE()) : 0 }));
   h('shell:reveal', (p) => shell.showItemInFolder(p));
   h('shell:readLink', async (p) => {
+    if (MAC) { try { const t = fs.realpathSync(p); return t === p ? null : { path: t, isDir: fs.statSync(t).isDirectory() }; } catch { return null; } }
     const link = shell.readShortcutLink(p);
     if (!link || !link.target) return null;
     try { return { path: link.target, isDir: fs.statSync(link.target).isDirectory() }; } catch { return { path: link.target, isDir: false }; }
   });
   h('shell:terminal', (dir) => {
+    if (MAC) { spawn('/usr/bin/open', ['-a', 'Terminal', dir], { detached: true, stdio: 'ignore' }).unref(); return; }
     const child = spawn('wt.exe', ['-d', dir], { detached: true, stdio: 'ignore', windowsHide: false });
     child.on('error', () => spawn('cmd.exe', ['/c', 'start', 'cmd.exe'], { cwd: dir, detached: true, stdio: 'ignore' }).unref());
     child.unref();
   });
   h('shell:contextMenu', ({ paths, x, y, extended }) => {
+    if (MAC) return macMenu(paths, x, y);
     const b = win.getContentBounds();
     const z = win.webContents.getZoomFactor();
     const pt = screen.dipToScreenPoint({ x: Math.round(b.x + x * z), y: Math.round(b.y + y * z) });
@@ -812,7 +829,7 @@ app.whenReady().then(() => {
   migrateLegacy();
   settings = new Settings(app.getPath('userData'));
   icons = new IconStore(iconsDir());
-  helper = new Helper(defaultExe);
+  helper = MAC ? new MacHelper() : new Helper(defaultExe);
   drive = new DriveSync(() => settings.get().drive, (m) => send('toast', m));
   dragIcon = makeDragIcon();
   helper.on('search', (m) => send('search:batch', m));
@@ -845,7 +862,7 @@ app.whenReady().then(() => {
   registerIpc();
   watchForUpdates();
   watchDevices();
-  log('started, helper:', path.basename(defaultExe));
+  log('started, helper:', MAC ? 'mac-helper' : path.basename(defaultExe));
   createWindow(argvPaths(process.argv));
 });
 
@@ -863,3 +880,40 @@ app.on('window-all-closed', () => {
   if (helper) helper.stop();
   app.quit();
 });
+
+// ---------- macOS: Finder-style "More options" menu (Windows shows its own shell menu instead) ----------
+function macMenu(paths, x, y) {
+  const { Menu } = require('electron');
+  const one = paths.length === 1 ? paths[0] : null;
+  return new Promise((resolve) => {
+    let chosen = null;
+    const pick = (action, fn) => () => { chosen = action; if (fn) fn(); };
+    const menu = Menu.buildFromTemplate([
+      { label: 'Open', click: pick('open', () => paths.forEach((p) => shell.openPath(p))) },
+      ...(one ? [{ label: 'Open With…', click: pick('openWith', () => helper.call('openWith', { path: one }).catch(() => {})) }] : []),
+      { label: 'Quick Look', click: pick('quicklook', () => spawn('/usr/bin/qlmanage', ['-p', ...paths], { detached: true, stdio: 'ignore' }).unref()) },
+      { type: 'separator' },
+      { label: 'Get Info', click: pick('info', () => helper.call('properties', { paths }).catch(() => {})) },
+      ...(one ? [{ label: 'Rename', click: pick('rename') }] : []),
+      { label: 'Compress', click: pick('compress', () => macCompress(paths)) },
+      { label: 'Show in Finder', click: pick('reveal', () => shell.showItemInFolder(paths[0])) },
+      { type: 'separator' },
+      { label: 'Copy', click: pick('copy') },
+      { label: 'Cut', click: pick('cut') },
+      { label: 'Paste', click: pick('paste') },
+      { type: 'separator' },
+      { label: 'Move to Trash', click: pick('delete') },
+    ]);
+    menu.popup({ window: win, x: Math.round(x), y: Math.round(y), callback: () => setTimeout(() => resolve({ chosen: !!chosen, action: chosen }), 0) });
+  });
+}
+// Finder's "Compress": one item → "<name>.zip", several → "Archive.zip"
+function macCompress(paths) {
+  const dir = path.dirname(paths[0]);
+  let name = paths.length === 1 ? path.basename(paths[0]) + '.zip' : 'Archive.zip';
+  for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = (paths.length === 1 ? path.basename(paths[0]) : 'Archive') + ' ' + i + '.zip';
+  const args = paths.length === 1 ? ['-c', '-k', '--sequesterRsrc', '--keepParent', paths[0], path.join(dir, name)] : null;
+  if (args) spawn('/usr/bin/ditto', args, { stdio: 'ignore' });
+  else spawn('/usr/bin/zip', ['-r', '-q', path.join(dir, name), ...paths.map((p) => path.basename(p))], { cwd: dir, stdio: 'ignore' });
+}
+

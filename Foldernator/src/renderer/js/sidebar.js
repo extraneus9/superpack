@@ -1,6 +1,6 @@
 // Navigation pane, laid out like Windows 11 Explorer: Home, Gallery, pinned folders (real shell icons,
 // drag to reorder), the expandable This PC tree, then status boards for the status folders.
-import { el, baseName, fmtSize, isRoot, debounce, collator } from './util.js';
+import { el, baseName, fmtSize, isRoot, isFsPath, debounce, collator, IS_MAC } from './util.js';
 import { icon, folderSvg, driveSvg, homeIcon, galleryIcon, iconStyles } from './icons.js';
 import { HoverPill, enter as motionEnter } from './motion.js';
 
@@ -26,7 +26,7 @@ export class Sidebar {
   row({ label, iconHtml, loc, meta, pin, depth, tree, dropDir, title }) {
     const node = el('div', {
       class: 'side-item' + (tree ? ' tree' : '') + (this.activeLoc() === (loc || '').toLowerCase() ? ' active' : ''),
-      title: title || (loc && /^[a-zA-Z]:\\/.test(loc) ? loc : label),
+      title: title || (loc && isFsPath(loc) ? loc : label),
       dataset: { loc: loc || '', drop: dropDir || '', pin: pin != null ? String(pin) : '' },
     });
     if (tree) {
@@ -97,7 +97,7 @@ export class Sidebar {
       frag.append(el('div', { class: 'side-sep' }));
     }
 
-    this.renderTree(frag, 'thispc', 'This PC', icon('pc', 16), 0);
+    this.renderTree(frag, 'thispc', IS_MAC ? 'Computer' : 'This PC', icon('pc', 16), 0);
 
     const scopes = s.statusScopes || [];
     if (scopes.length) {

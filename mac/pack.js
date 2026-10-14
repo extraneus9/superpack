@@ -48,9 +48,25 @@ async function player() {
   console.log('the player.app');
 }
 
+// Foldernator: same app, its Mac helper (src/main/mac-helper.js) replaces the Windows C# helper
+async function foldernator() {
+  const packager = require(path.join(ROOT, 'Foldernator', 'node_modules', '@electron', 'packager'));
+  const [built] = await packager({
+    dir: path.join(ROOT, 'Foldernator'), out: path.join(OUT, 'build'), overwrite: true, platform: 'darwin', arch: 'arm64',
+    electronVersion: ELECTRON, name: 'Foldernator', executableName: 'Foldernator', appBundleId: 'app.alva.foldernator',
+    icon: path.join(OUT, 'icons', 'foldernator.icns'), asar: true, prune: true, quiet: true,
+    ignore: [/^\/bin($|\/)/, /^\/native($|\/)/, /^\/scripts($|\/)/, /\.py$/, /^\/package-lock\.json$/],
+    extendInfo: { NSHumanReadableCopyright: 'alva · MIT', NSDesktopFolderUsageDescription: 'Foldernator shows and organises your files.', NSDocumentsFolderUsageDescription: 'Foldernator shows and organises your files.', NSDownloadsFolderUsageDescription: 'Foldernator shows and organises your files.', NSRemovableVolumesUsageDescription: 'Foldernator shows the files on your drives.', NSAppleEventsUsageDescription: 'Foldernator asks Finder for Get Info windows.' },
+  });
+  fs.mkdirSync(path.join(OUT, 'apps'), { recursive: true });
+  fs.renameSync(path.join(built, 'Foldernator.app'), path.join(OUT, 'apps', 'Foldernator.app'));
+  console.log('Foldernator.app');
+}
+
 function manifest() {
   const apps = [
     { key: 'player', name: 'the player', bundle: 'the player.app' },
+    { key: 'foldernator', name: 'Foldernator', bundle: 'Foldernator.app' },
     { key: 'prompterinator', name: 'The Prompterinator', bundle: 'The Prompterinator.app' },
     { key: 'nomorewriting', name: 'No More Writing', bundle: 'No More Writing.app', extra: '+ 5 GB of AI models' },
   ].filter((a) => fs.existsSync(path.join(OUT, 'apps', a.bundle))).map((a) => {
@@ -76,4 +92,4 @@ async function installer() {
   console.log('Install superpack.app');
 }
 
-({ player, manifest, installer }[what] || (() => { throw new Error(`unknown step ${what}`); }))();
+({ player, foldernator, manifest, installer }[what] || (() => { throw new Error(`unknown step ${what}`); }))();

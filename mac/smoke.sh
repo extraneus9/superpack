@@ -23,6 +23,9 @@ FF="$APPS/the player.app/Contents/Resources/ffmpeg"
 P=$!; sleep 15
 if kill -0 $P 2>/dev/null; then ok "the player starts and stays up with a video"; kill $P; else bad "the player starts (log: $(tail -5 "$OUT/player.log"))"; fi
 
+# ---------- Foldernator (the real app, driven through its own window API) ----------
+node "$ROOT/mac/foldernator-test.js" || fail=1
+
 # ---------- The Prompterinator ----------
 "$APPS/The Prompterinator.app/Contents/MacOS/Prompterinator" >"$OUT/prompter.log" 2>&1 &
 P=$!; up=""
@@ -44,7 +47,7 @@ kill -0 $P 2>/dev/null && { echo "installer still running after 300 s — stoppi
 wait $P; echo "installer exit code: $? after ${i}s"
 unset SUPERPACK_QA SUPERPACK_QA_DIR SUPERPACK_SHOTS ELECTRON_ENABLE_LOGGING
 echo "── installer log:"; tail -25 "$OUT/installer.log"
-for a in "the player.app" "The Prompterinator.app" "No More Writing.app"; do
+for a in "the player.app" "Foldernator.app" "The Prompterinator.app" "No More Writing.app"; do
   [ -x "$T/$a/Contents/MacOS/$(defaults read "$T/$a/Contents/Info" CFBundleExecutable 2>/dev/null)" ] && ok "installer copied $a" || bad "installer copied $a"
 done
 [ -f "$OUT/shots/e2-done.png" ] && ok "installer reached 'All set'" || bad "installer end screen ($(ls "$OUT/shots" 2>/dev/null)) $(tail -5 "$OUT/installer.log")"

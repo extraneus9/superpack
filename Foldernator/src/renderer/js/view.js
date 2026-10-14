@@ -1,5 +1,5 @@
 // The file view: Details list + icon grids, virtualized, with selection, rubber band, rename and drag-drop.
-import { el, escapeHtml, fmtSize, fmtDate, typeLabel, extOf, stripExt, VIDEO_EXT } from './util.js';
+import { el, escapeHtml, fmtSize, fmtDate, typeLabel, extOf, stripExt, VIDEO_EXT, isRoot, isFsPath } from './util.js';
 import { folderSvg, driveSvg, icon, fileSvg, iconStyles } from './icons.js';
 import { enter as motionEnter, flip as motionFlip, HoverPill, motionLevel } from './motion.js';
 
@@ -36,7 +36,7 @@ function driveBadge(it, info, compact = false) {
   if (s.state === 'differs') return `<span class="drv drv-part" title="On Drive, but the size is different">${CLOUD_PART}${compact ? '' : '<span>Different</span>'}</span>`;
   return `<span class="drv drv-off" title="Not on Google Drive">${CLOUD_OFF}${compact ? '' : '<span>Not on Drive</span>'}</span>`;
 }
-const isRootPath = (p) => /^[a-zA-Z]:\\?$/.test(p);
+const isRootPath = (p) => isRoot(p);
 // Files Windows can render a real thumbnail for; everything else gets its shell icon.
 const THUMB_EXT = new Set(['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif', 'ico', 'psd', 'ai', 'eps', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2',
   'mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'wmv', 'mts', 'm2ts', 'mpg', 'mpeg', 'flv', '3gp', 'pdf', 'blend', 'docx', 'pptx', 'xlsx', 'mp3', 'm4a', 'flac']);
@@ -298,7 +298,7 @@ export class FileView {
     const row = el('div', { class: 'row', draggable: 'true' });
     row.innerHTML = `<div class="cell name"><span class="ic">${iconStyles.files === 'minimal' ? fileSvg(extOf(it.n), 20) : `<img src="ficon://f/?p=${enc(it.p)}&s=normal" alt="" draggable="false">`}</span><span class="nm">${escapeHtml(this.displayName(it))}</span></div>`
       + `<div class="cell" style="width:170px">${escapeHtml(fmtDate(it.m))}</div>`
-      + `<div class="cell" style="width:340px" title="${escapeHtml(it.p)}">${escapeHtml(it.p.slice(0, it.p.length - it.n.length).replace(/\\$/, ''))}</div>`;
+      + `<div class="cell" style="width:340px" title="${escapeHtml(it.p)}">${escapeHtml(it.p.slice(0, it.p.length - it.n.length).replace(/[\\/]$/, ''))}</div>`;
     return row;
   }
 
@@ -503,7 +503,7 @@ export class FileView {
   // Folder previews (Settings → Files & view). Cached per path+mtime; asked for in one batch per frame, and
   // tiles already on screen get their icon swapped in place when the answer arrives.
   peekFor(it) {
-    if (!this.app.settings().view.folderPreviews || !/^[a-zA-Z]:\\|^\\\\/.test(it.p)) return null;
+    if (!this.app.settings().view.folderPreviews || !isFsPath(it.p)) return null;
     const c = this.peekCache.get(it.p);
     if (c && c.m === it.m) return c.urls;
     if (!this.peekWanted.has(it.p)) { this.peekWanted.set(it.p, it.m); if (!this.peekTimer) this.peekTimer = setTimeout(() => this.flushPeek(), 30); }
@@ -562,7 +562,7 @@ export class FileView {
           break;
         }
         case 'drive': cell.innerHTML = driveBadge(it, this.tab.driveInfo); break;
-        case 'location': cell.textContent = it.p.slice(0, it.p.length - it.n.length).replace(/\\$/, ''); cell.title = cell.textContent; break;
+        case 'location': cell.textContent = it.p.slice(0, it.p.length - it.n.length).replace(/[\\/]$/, ''); cell.title = cell.textContent; break;
         case 'modified': cell.textContent = it.drive ? '' : fmtDate(it.m); break;
         case 'type': cell.textContent = typeLabel(it); break;
         case 'size': cell.textContent = it.d ? '' : fmtSize(it.s); break;
@@ -713,7 +713,7 @@ export class FileView {
       if (!elx) return null;
       if (this.root.contains(elx)) { const t = this.dropTargetFor({ target: elx }); return t ? { dir: t.dir, node: t.node } : null; }
       const tab = elx.closest('#tabs .tab');
-      if (tab) { const tt = this.app.state.tabs[[...tab.parentNode.children].indexOf(tab)]; return tt && /^[a-zA-Z]:\\|^\\\\/.test(tt.loc) ? { dir: tt.loc, node: tab } : null; }
+      if (tab) { const tt = this.app.state.tabs[[...tab.parentNode.children].indexOf(tab)]; return tt && isFsPath(tt.loc) ? { dir: tt.loc, node: tab } : null; }
       const side = elx.closest('#sidebar [data-drop]');
       if (side && side.dataset.drop) return { dir: side.dataset.drop, node: side };
       return null;
@@ -741,8 +741,8 @@ export class FileView {
       ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 12}px)`;
       const tg = targetAt(e.clientX, e.clientY);
       const dragging = paths.map((p) => p.toLowerCase());
-      const here = (this.tab.loc || '').toLowerCase().replace(/\\$/, '');
-      const ok = !!tg && !dragging.includes(tg.dir.toLowerCase()) && (!!tg.node || tg.dir.toLowerCase().replace(/\\$/, '') !== here); // empty space of this same folder = nowhere
+      const here = (this.tab.loc || '').toLowerCase().replace(/[\\/]$/, '');
+      const ok = !!tg && !dragging.includes(tg.dir.toLowerCase()) && (!!tg.node || tg.dir.toLowerCase().replace(/[\\/]$/, '') !== here); // empty space of this same folder = nowhere
       const node = ok ? tg.node : null;
       if (node !== hot) {
         clearHot();
@@ -894,7 +894,7 @@ export class FileView {
     const dragging = this.app.state.dragging || [];
     if (it && (it.d || it.drive) && !dragging.some((p) => p.toLowerCase() === it.p.toLowerCase())) return { dir: it.p, node: this.nodes.get(it.p) };
     const loc = this.tab.loc;
-    if (this.tab.search || !(/^[a-zA-Z]:\\|^\\\\/.test(loc) || loc.startsWith('::'))) return null;
+    if (this.tab.search || !(isFsPath(loc) || loc.startsWith('::'))) return null;
     return { dir: loc, node: null };
   }
 

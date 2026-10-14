@@ -23,6 +23,7 @@ sign() { codesign --force --deep --sign - "$1"; }
 echo "── icons"
 mkicns "the player/assets/icon.png" "$OUT/icons/player.icns"
 mkicns "installer/assets/icons/superpack.png" "$OUT/icons/superpack.icns"
+mkicns "Foldernator/assets/app.png" "$OUT/icons/foldernator.icns"
 mkicns "The Prompterinator/packaging/icon_preview.png" "The Prompterinator/packaging/icon.icns"
 mkicns "No More Writing/assets/icon_256.png" "No More Writing/assets/icon.icns"
 
@@ -31,6 +32,11 @@ echo "── the player"
 node mac/pack.js player
 codesign --force --sign - "$OUT/apps/the player.app/Contents/Resources/ffmpeg/ffmpeg" "$OUT/apps/the player.app/Contents/Resources/ffmpeg/ffprobe"
 sign "$OUT/apps/the player.app"
+
+echo "── Foldernator"
+(cd Foldernator && npm ci --no-audit --no-fund && npm i --no-save --no-audit --no-fund @electron/packager@18.3.6)
+node mac/pack.js foldernator
+sign "$OUT/apps/Foldernator.app"
 
 echo "── The Prompterinator"
 python3 -m venv "$OUT/venv-prompter"
@@ -49,7 +55,7 @@ sign "$OUT/apps/No More Writing.app"
 echo "── source code (the same folders as this repo)"
 mkdir -p "$OUT/source"
 cp README.md LICENSE "$OUT/source/"
-for a in "the player" "The Prompterinator" "No More Writing"; do
+for a in "the player" "Foldernator" "The Prompterinator" "No More Writing"; do
   rsync -a --exclude node_modules --exclude __pycache__ --exclude '*.icns' "$a/" "$OUT/source/$a/"
 done
 

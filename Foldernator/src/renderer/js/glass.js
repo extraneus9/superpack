@@ -157,7 +157,7 @@ function stopLive({ keepWanted = false } = {}) {
 }
 
 export async function setLiveGlass(on) {
-  wanted = !!on;
+  wanted = !!on && !/Macintosh/.test(navigator.userAgent);
   if (!wanted) { stopLive(); return false; }
   if (live) return true;
   if (!starting) starting = startLive().catch((e) => { console.warn('live glass unavailable:', e.message); stopLive(); }).finally(() => { starting = null; });

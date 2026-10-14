@@ -1,5 +1,19 @@
 // Themed context menus with submenus and keyboard navigation.
-import { el } from './util.js';
+import { el, IS_MAC } from './util.js';
+
+// On a Mac the menus speak Finder: same actions, Mac names and ⌘ ⌥ ⇧ keys
+const MAC_WORDS = {
+  'Open in Windows Explorer': 'Open in Finder', 'Show in Windows Explorer': 'Show in Finder', Properties: 'Get Info',
+  Delete: 'Move to Trash', 'This PC': 'Computer', 'Open in Terminal': 'Open in Terminal',
+};
+const macLabel = (t) => (IS_MAC && MAC_WORDS[t]) || t;
+const macKey = (k) => {
+  if (!IS_MAC || !k) return k;
+  if (k === 'Alt+Enter') return '⌘I';
+  if (k === 'Del') return '⌘⌫';
+  if (k === 'F2') return '↩';
+  return k.replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥').replace(/Shift\+/g, '⇧');
+};
 import { icon } from './icons.js';
 
 const root = () => document.getElementById('menus');
@@ -81,8 +95,8 @@ function build(items, level) {
     if (it.element) { menu.append(typeof it.element === 'function' ? it.element() : it.element); continue; }
     const row = el('div', { class: 'menu-item' + (it.disabled ? ' disabled' : '') + (it.checked ? ' checked' : ''), role: 'menuitem' },
       el('span', { class: 'mi-icon', html: it.swatch ? `<i class="status-swatch" style="background:${it.swatch}"></i>` : it.checked ? icon('check') : it.icon ? icon(it.icon) : '' }),
-      el('span', { class: 'mi-label', text: it.label }),
-      it.key ? el('span', { class: 'mi-key', text: it.key }) : null,
+      el('span', { class: 'mi-label', text: macLabel(it.label) }),
+      it.key ? el('span', { class: 'mi-key', text: macKey(it.key) }) : null,
       it.submenu ? el('span', { class: 'mi-sub', html: icon('chevron', 12) }) : null,
     );
     row.addEventListener('mouseenter', () => {

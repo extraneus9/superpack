@@ -25,7 +25,17 @@
       "Media details for any video or audio file (Ctrl+I).",
       "Your Quick access pins, Home and This PC, just like Windows."
     ],
-    "note": "Folder colours show in Windows' own Explorer too."
+    "note": "Folder colours show in Windows' own Explorer too.",
+    "lead_mac": "A Finder alternative for your Mac: it does what Finder does — and looks the way you want.",
+    "points_mac": [
+      "Status colours on folders, so you see where every project stands at a glance — they show in Finder too, as tags.",
+      "Themes with the Mac's own see-through glass — or build your own.",
+      "Choose your folder and icon styles.",
+      "Fluidity: no motion, smooth or liquid.",
+      "Media details for any video or audio file (⌘I on a video).",
+      "Your Desktop, Documents, Downloads, iCloud Drive and disks in the sidebar."
+    ],
+    "note_mac": "Works alongside Finder: same files, same Trash, same tags."
   },
   "prompterinator": {
     "desc": "A teleprompter that follows your voice.",

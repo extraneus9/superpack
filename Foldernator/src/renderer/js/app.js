@@ -1,6 +1,7 @@
 // Foldernator — UI controller: tabs, navigation, commands, keyboard, status colors.
 import {
   $, el, debounce, collator, typeLabel, isRoot, isFsPath, normDir, baseName, parentOf, fmtSize, extOf,
+  IS_MAC, SEP, trimSep, diskOf,
 } from './util.js';
 import { icon, folderSvg, folderImages, homeIcon, galleryIcon, setIconStyles, iconStyles } from './icons.js';
 import { Layout } from './layout.js';
@@ -18,6 +19,7 @@ import { openSettings } from './settings-ui.js';
 import { openMediaDetails, isMediaFile } from './media-details.js';
 
 const api = window.api;
+if (IS_MAC) document.documentElement.classList.add('mac'); // Mac layout: traffic lights top-left
 const state = { settings: null, palette: [], paths: {}, drives: [], tabs: [], active: 0, clip: null, dragging: null, undo: [], iconsReady: new Set() };
 let view, sidebar, preview, layout;
 let tabSeq = 0;
@@ -41,7 +43,7 @@ state.names = new Map();   // virtual path -> display name
 state.parents = new Map(); // virtual path -> parent location
 
 function titleFor(loc) {
-  if (loc === 'thispc') return 'This PC';
+  if (loc === 'thispc') return IS_MAC ? 'Computer' : 'This PC';
   if (isVirt(loc)) return state.names.get(loc) || 'Device';
   if (loc === 'home') return 'Home';
   if (loc === 'gallery') return 'Gallery';
@@ -329,8 +331,8 @@ async function load(t, { select = null, keep = false } = {}) {
     api.statusSeen({ dir: loc, statuses }).then((changed) => {
       if (!changed) return;
       const idx = { ...state.settings.statusIndex };
-      const parentKey = loc.replace(/\\$/, '').toLowerCase();
-      for (const k of Object.keys(idx)) if (parentOf(idx[k].path).replace(/\\$/, '').toLowerCase() === parentKey) delete idx[k];
+      const parentKey = trimSep(loc).toLowerCase();
+      for (const k of Object.keys(idx)) if (trimSep(parentOf(idx[k].path)).toLowerCase() === parentKey) delete idx[k];
       for (const s of statuses) idx[s.path.toLowerCase()] = { path: s.path, status: s.status, color: s.color, t: Date.now() };
       state.settings.statusIndex = idx;
       sidebar.render();
@@ -402,7 +404,7 @@ async function homeItems() {
   let recent = [];
   try {
     const qa = await api.quickAccess();
-    const files = qa.filter((x) => !x.pinned && x.path && /^[a-zA-Z]:\\/.test(x.path)).slice(0, 40);
+    const files = qa.filter((x) => !x.pinned && x.path && isFsPath(x.path)).slice(0, 40);
     recent = (await Promise.all(files.map(async (x) => {
       try { const st = await api.stat(x.path); return st.isDir ? null : { n: baseName(x.path), p: x.path, d: false, s: st.size, m: st.mtime, group: 'recent' }; } catch { return null; }
     }))).filter(Boolean);
@@ -525,11 +527,11 @@ app.knownStatus = (p) => {
   const s = e.status && app.statusByKey(e.status);
   return { status: e.status, color: (s && s.color) || e.color };
 };
-const lower = (p) => p.replace(/\\+$/, '').toLowerCase();
+const lower = (p) => trimSep(p).toLowerCase();
 app.scopes = () => (state.settings.statusScopes || []).map(lower);
 // "*" in a status folder path matches any one folder (…\1-SOCIALS\* = vol3, vol4, vol7 later…).
 const scopeMatch = (scope, loc) => {
-  const a = scope.split('\\'), b = lower(loc).split('\\');
+  const a = scope.split(SEP), b = lower(loc).split(SEP);
   return a.length === b.length && a.every((seg, i) => seg === '*' || seg === b[i]);
 };
 app.isStatusScope = (loc) => isFsPath(loc) && app.scopes().some((s) => scopeMatch(s, loc));
@@ -688,7 +690,7 @@ async function del(permanent) {
   const firstIdx = t.index.get(items[0].p);
   if (!permanent) await motionExit(items.map((i) => view.nodes.get(i.p)).filter(Boolean));
   const r = await api.fileOp({ op: permanent ? 'delete' : 'recycle', paths: items.map((i) => i.p) });
-  if (r && r.hr && !r.aborted) toast('Windows couldn’t delete some items.', 'err');
+  if (r && r.hr && !r.aborted) toast(`${IS_MAC ? 'Some items' : 'Windows'} couldn’t be deleted.`, 'err');
   // Search results aren't re-listed by load(): drop the ones that are really gone.
   if (t.search) {
     const gone = await Promise.all(items.map((i) => api.stat(i.p).then(() => null, () => i.p)));
@@ -949,10 +951,9 @@ app.beginDrag = (paths) => {
 };
 
 function decideOp(e, paths, dir) {
-  if (e.ctrlKey) return 'copy';
-  if (e.shiftKey) return 'move';
-  const drive = (p) => (/^[a-zA-Z]:/.test(p) ? p[0].toLowerCase() : p.split('\\').slice(0, 4).join('\\').toLowerCase());
-  return paths.length && drive(paths[0]) === drive(dir) ? 'move' : 'copy';
+  if (IS_MAC ? e.altKey : e.ctrlKey) return 'copy';
+  if (IS_MAC ? e.metaKey : e.shiftKey) return 'move';
+  return paths.length && diskOf(paths[0]) === diskOf(dir) ? 'move' : 'copy';
 }
 
 // Only our own drags report "move" back to the source; external sources always see "copy",
@@ -961,7 +962,7 @@ app.dropEffectFor = (e, dir) => (state.dragging ? decideOp(e, state.dragging, di
 
 // Drops from other apps honour what the source allows. Archive apps (WinRAR, 7-Zip) hand over files they just
 // extracted to a temp folder and only allow COPY — asking Windows for a move made the drop get refused.
-const TEMPISH = /\\(temp|tmp)\\/i;
+const TEMPISH = /[\\/](temp|tmp|t)[\\/]/i; // (a Mac's temp folders end in /T/)
 function externalOp(e, paths, dir) {
   const ea = (e.dataTransfer && e.dataTransfer.effectAllowed) || 'all';
   const canMove = /move|all|uninitialized/i.test(ea), canCopy = /copy|all|uninitialized/i.test(ea);
@@ -995,7 +996,7 @@ app.handleDrop = async (e, dir, targetNode) => {
   let paths = app.pathsFromDrop(e);
   state.dragging = null;
   // Archive apps (WinRAR, 7-Zip) give relative names and extract after the drop: wait, then copy the result.
-  const rel = paths.filter((p) => !/^[a-zA-Z]:\\|^\\\\/.test(p));
+  const rel = paths.filter((p) => !isFsPath(p));
   if (!ours && rel.length && dir && isFsPath(dir)) {
     ripple(e.clientX, e.clientY);
     toast(`Waiting for the archive to extract ${rel.length} item${rel.length > 1 ? 's' : ''}…`, 'busy', { id: 'rar' });
@@ -1026,8 +1027,8 @@ app.handleDrop = async (e, dir, targetNode) => {
   else if (!ours) ripple(e.clientX, e.clientY);
   if (!paths.length || !dir) return;
   if (isVirt(dir) || paths.some(isVirt)) return deviceCopy(paths, dir); // to / from a device: shell copy
-  const dl = dir.replace(/\\$/, '').toLowerCase();
-  const valid = paths.filter((p) => { const pl = p.toLowerCase(); return pl !== dl && !dl.startsWith(pl + '\\'); });
+  const dl = trimSep(dir).toLowerCase();
+  const valid = paths.filter((p) => { const pl = p.toLowerCase(); return pl !== dl && !dl.startsWith(pl + SEP); });
   if (!valid.length) { toast('Can’t move a folder into itself.', 'warn'); return; }
   const op = ours ? decideOp(e, valid, dir) : externalOp(e, valid, dir);
   // Moving out of this folder: the items leave the view at once (put back if the move fails), instead of
@@ -1218,7 +1219,7 @@ async function nativeMenu(x, y, extended = false) {
     else if (r.action === 'paste') paste(items.length === 1 && items[0].d ? items[0].p : null);
     else setTimeout(() => load(app.tab(), { keep: true }), 600);
   } catch (e) {
-    toast('Windows menu failed: ' + cleanError(e.message), 'err');
+    toast((IS_MAC ? 'Menu failed: ' : 'Windows menu failed: ') + cleanError(e.message), 'err');
   }
 }
 
@@ -1233,7 +1234,16 @@ function crumbSegments(loc) {
   if (loc === 'home') return [{ label: 'Home', loc: 'home', icon: 'home' }];
   if (loc === 'gallery') return [{ label: 'Gallery', loc: 'gallery', icon: 'image' }];
   if (loc.startsWith('board:')) return [{ label: 'Status', loc: null, icon: 'dot' }, { label: titleFor(loc), loc }];
-  const segs = [{ label: 'This PC', loc: 'thispc', icon: 'pc' }];
+  const segs = [{ label: IS_MAC ? 'Computer' : 'This PC', loc: 'thispc', icon: 'pc' }];
+  if (IS_MAC) {
+    // a Mac path: the disk ("/" or /Volumes/<name>), then each folder
+    const vol = /^\/Volumes\/[^/]+/.exec(loc);
+    const root = vol ? vol[0] : '/';
+    segs.push({ label: baseName(root), loc: root });
+    let acc = root === '/' ? '' : root;
+    for (const part of loc.slice(root === '/' ? 1 : root.length).split('/').filter(Boolean)) { acc += '/' + part; segs.push({ label: part, loc: acc }); }
+    return segs;
+  }
   const root = loc.slice(0, 3);
   segs.push({ label: titleFor(root), loc: root });
   const rest = loc.slice(3).split('\\').filter(Boolean);
@@ -1327,13 +1337,14 @@ function editAddress() {
 async function goTo(text) {
   if (!text || /^(this pc|thispc|computer)$/i.test(text)) return navigate('thispc');
   let p = text.replace(/%([^%]+)%/g, (m, v) => ({ userprofile: state.paths.home, home: state.paths.home }[v.toLowerCase()] || m));
+  if (IS_MAC && p.startsWith('~')) p = state.paths.home + p.slice(1);
   if (/^[a-zA-Z]:$/.test(p)) p += '\\';
   try {
     const st = await api.stat(p);
     if (st.isDir) navigate(p);
     else openItems([{ n: baseName(p), p, d: false }]);
   } catch {
-    toast(`Windows can’t find “${text}”.`, 'err');
+    toast(`${IS_MAC ? 'Foldernator' : 'Windows'} can’t find “${text}”.`, 'err');
   }
 }
 
@@ -1573,6 +1584,20 @@ function typeAhead(ch) {
     const i = (from + k) % list.length;
     if ((list[i].label || list[i].n).toLowerCase().startsWith(needle)) { moveFocus(0, { abs: i }); return; }
   }
+}
+
+// macOS: the Mac versions of the shortcuts are re-sent as the Windows ones, so every command keeps one code path.
+// ⌘X/⌘C/⌘V/⌘A… → Ctrl, ⌘I → Get Info, ⌘⌫ → Move to Trash, ⌘↑ → up a folder, ⌘↓ → open. Text boxes keep their own ⌘ keys.
+function macKeys(e) {
+  if (e.__mac || !e.metaKey || e.ctrlKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const map = { Backspace: { key: 'Delete' }, i: { key: 'Enter', altKey: true }, I: { key: 'Enter', altKey: true }, ArrowUp: { key: 'ArrowUp', altKey: true }, ArrowDown: { key: 'Enter' } }[e.key]
+    || { key: e.key, ctrlKey: true };
+  e.preventDefault(); e.stopImmediatePropagation();
+  const ev = new KeyboardEvent('keydown', { key: map.key, code: e.code, ctrlKey: !!map.ctrlKey, altKey: !!map.altKey, shiftKey: e.shiftKey, metaKey: false, bubbles: true, cancelable: true });
+  ev.__mac = true;
+  (t || document).dispatchEvent(ev);
 }
 
 function onKeyDown(e) {
@@ -1874,6 +1899,7 @@ async function boot() {
   }
   state.active = open && open.length ? 0 : restore ? Math.min(session.active || 0, state.tabs.length - 1) : 0;
 
+  if (IS_MAC) document.addEventListener('keydown', macKeys, true); // ⌘ shortcuts → the same commands as Ctrl
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('mouseup', (e) => { if (e.button === 3) back(); if (e.button === 4) forward(); });
   view.root.addEventListener('focus', () => view.updateSelection());

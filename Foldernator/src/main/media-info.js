@@ -8,6 +8,12 @@ let ffprobe; // resolved once: PATH first, then the WinGet FFmpeg package folder
 function findFfprobe() {
   if (ffprobe !== undefined) return ffprobe;
   ffprobe = null;
+  if (process.platform === 'darwin') {
+    // the player's own copy (superpack), then Homebrew / MacPorts / PATH (Finder-launched apps get no shell PATH)
+    const cands = [process.resourcesPath && path.join(process.resourcesPath, 'ffmpeg', 'ffprobe'), '/Applications/the player.app/Contents/Resources/ffmpeg/ffprobe',
+      '/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/opt/local/bin/ffprobe', ...(process.env.PATH || '').split(':').map((d) => d && path.join(d, 'ffprobe'))];
+    return (ffprobe = cands.find((p) => p && fs.existsSync(p)) || null);
+  }
   // installed by superpack: use the FFmpeg that ships with the player (or one of our own), never needing a separate install
   const exeDir = path.dirname(process.execPath);
   for (const p of [process.resourcesPath && path.join(process.resourcesPath, 'ffmpeg', 'ffprobe.exe'), path.join(exeDir, '..', 'the player', 'resources', 'ffmpeg', 'ffprobe.exe')]) {

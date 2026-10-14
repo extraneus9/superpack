@@ -51,7 +51,7 @@ function renderInfo() {
   if (!it || !info.classList.contains('on')) return;
   info.innerHTML = `<div><b>Name</b>${it.n.replace(/</g, '&lt;')}</div><div><b>Dimensions</b>${img.naturalWidth} × ${img.naturalHeight}</div>`
     + (it.s ? `<div><b>Size</b>${fmtSize(it.s)}</div>` : '') + (it.m ? `<div><b>Modified</b>${fmtDate(it.m)}</div>` : '')
-    + `<div><b>Folder</b>${it.p.slice(0, it.p.length - it.n.length).replace(/\\$/, '').replace(/</g, '&lt;')}</div>`;
+    + `<div><b>Folder</b>${it.p.slice(0, it.p.length - it.n.length).replace(/[\\/]$/, '').replace(/</g, '&lt;')}</div>`;
 }
 
 function show() {
@@ -338,7 +338,7 @@ async function markSave(asCopy) {
   try {
     const out = await api.writeImage({ path: it.p, data: new Uint8Array(await blob.arrayBuffer()), copy: asCopy, ext });
     markEnd();
-    if (asCopy) toast('Saved as ' + out.split('\\').pop());
+    if (asCopy) toast('Saved as ' + out.split(/[\\/]/).pop());
     else { bust = Date.now(); preload.clear(); show(); toast('Saved'); }
   } catch (e) { toast('Couldn’t save: ' + String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
 }

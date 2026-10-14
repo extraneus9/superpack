@@ -1,6 +1,9 @@
 // Google Drive folder-color sync through the rclone token (scope=drive).
 // Local Z:\A\B maps to gdrive:A/B via ordered prefix rules (longest local prefix wins).
 const { execFile } = require('child_process');
+const RCLONE = process.platform === 'darwin'
+  ? (['/opt/homebrew/bin/rclone', '/usr/local/bin/rclone'].find((p) => require('fs').existsSync(p)) || 'rclone')
+  : 'rclone';
 
 const PALETTE = [
   '#ac725e', '#d06b64', '#f83a22', '#fa573c', '#ff7537', '#ffad46', '#42d692', '#16a765',
@@ -31,7 +34,7 @@ function nearestPalette(hex) {
 
 function run(args, timeout = 60000) {
   return new Promise((resolve, reject) => {
-    execFile('rclone', args, { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(RCLONE, args, { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) return reject(new Error((stderr || err.message).trim().split('\n').pop()));
       resolve(stdout);
     });
@@ -55,8 +58,8 @@ class DriveSync {
     const rules = [...(cfg.rules || [])].sort((a, b) => b.local.length - a.local.length);
     for (const r of rules) {
       const base = r.local.replace(/[\\/]+$/, '');
-      if (lp.toLowerCase() === base.toLowerCase() || lp.toLowerCase().startsWith(base.toLowerCase() + '\\')) {
-        const rest = lp.slice(base.length).replace(/^\\+/, '').split('\\').filter(Boolean).join('/');
+      if (lp.toLowerCase() === base.toLowerCase() || lp.toLowerCase().startsWith(base.toLowerCase() + '\\') || lp.toLowerCase().startsWith(base.toLowerCase() + '/')) {
+        const rest = lp.slice(base.length).replace(/^[\\/]+/, '').split(/[\\/]/).filter(Boolean).join('/');
         const remote = r.remote.endsWith(':') || r.remote.endsWith('/') ? r.remote + rest : (rest ? r.remote + '/' + rest : r.remote);
         return { remote, remoteName: r.remote.split(':')[0] };
       }

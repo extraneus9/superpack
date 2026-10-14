@@ -1,5 +1,5 @@
 // Settings: appearance (theme editor), statuses, Google Drive sync, view, shortcuts.
-import { el, fileUrl } from './util.js';
+import { el, fileUrl, isFsPath, IS_MAC } from './util.js';
 import { icon, folderSvg, fileSvg, homeIcon, galleryIcon, iconStyles, FOLDER_STYLES, UI_STYLES } from './icons.js';
 import { PRESETS, resolveTheme } from './themes.js';
 import { motionLevel, HoverPill, flip as motionFlip, enter as motionEnter, flyInto } from './motion.js';
@@ -140,7 +140,7 @@ export function openSettings(app, section = 'appearance') {
     seg('Density', 'density', [['compact', 'Compact'], ['normal', 'Normal'], ['comfy', 'Roomy']]);
     range('Corner radius', 'radius', 0, 16, 1, (v) => v + 'px');
 
-    const bgText = el('input', { type: 'text', placeholder: 'Image path (or empty)', value: theme.bgImage ? decodeURI(theme.bgImage.replace('file:///', '').replace(/\//g, '\\')) : '', spellcheck: 'false' });
+    const bgText = el('input', { type: 'text', placeholder: 'Image path (or empty)', value: theme.bgImage ? (IS_MAC ? decodeURI(theme.bgImage.replace('file://', '')) : decodeURI(theme.bgImage.replace('file:///', '').replace(/\//g, '\\'))) : '', spellcheck: 'false' });
     bgText.addEventListener('change', () => edit({ bgImage: bgText.value.trim() ? fileUrl(bgText.value.trim().replace(/^"|"$/g, '')) : '' }));
     const bgFromSel = el('button', { class: 'btn', text: 'Use selected image', onclick: () => {
       const it = app.selectedItems().find((x) => /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(x.n));
@@ -203,7 +203,7 @@ export function openSettings(app, section = 'appearance') {
     const loc = app.tab().loc;
     body.append(scopeRows, el('button', {
       class: 'btn', html: `${icon('plus')}<span>Add the current folder</span>`,
-      disabled: !/^[a-zA-Z]:\\./.test(loc) || null,
+      disabled: !(isFsPath(loc) && loc.length > 3) || null,
       title: loc,
       onclick: async () => { await app.setScope(loc, true); drawScopes(); },
     }));
@@ -248,7 +248,7 @@ export function openSettings(app, section = 'appearance') {
     const p = app.state.paths;
     const side = iconStyles.sidebar === 'mono'
       ? [icon('home', 18), icon('image', 18), icon('desktop', 18), icon('download', 18), icon('music', 18), icon('drive', 18)]
-      : [homeIcon(20), galleryIcon(20), ...[p.desktop, p.downloads, p.music, 'C:\\'].map((x) => `<img src="ficon://f/?p=${encodeURIComponent(x)}&s=normal&d=1" width="20" height="20" alt="">`)];
+      : [homeIcon(20), galleryIcon(20), ...[p.desktop, p.downloads, p.music, IS_MAC ? '/' : 'C:\\'].map((x) => `<img src="ficon://f/?p=${encodeURIComponent(x)}&s=normal&d=1" width="20" height="20" alt="">`)];
     body.append(el('div', { class: 'icon-preview', html: side.map((h) => `<span>${h}</span>`).join('') }));
 
     body.append(el('h3', { text: 'File icons', style: { marginTop: '22px' } }), el('p', { class: 'hint', text: 'Windows’ own file icons, or clean pages with a colored type tag. Photos and videos still show their thumbnails in icon views.' }));
@@ -256,7 +256,7 @@ export function openSettings(app, section = 'appearance') {
     const exts = ['mp4', 'png', 'pdf', 'blend', 'zip', 'txt', 'mp3', 'json', 'docx', 'psd'];
     const files = iconStyles.files === 'minimal'
       ? exts.map((e) => fileSvg(e, 36))
-      : exts.map((e) => `<img src="ficon://f/?p=${encodeURIComponent('C:\\__preview__.' + e)}&s=large" width="36" height="36" alt="">`);
+      : exts.map((e) => `<img src="ficon://f/?p=${encodeURIComponent((IS_MAC ? '/__preview__.' : 'C:\\__preview__.') + e)}&s=large" width="36" height="36" alt="">`);
     body.append(el('div', { class: 'icon-preview big', html: files.map((h) => `<span>${h}</span>`).join('') }));
   }
 
@@ -345,7 +345,7 @@ export function openSettings(app, section = 'appearance') {
       el('button', { class: 'icon-btn', title: 'Remove', html: icon('close'), onclick: () => { roots.splice(i, 1); save(); drawRoots(); } }))));
     drawRoots();
     const loc = app.tab().loc;
-    body.append(rows, el('button', { class: 'btn', html: `${icon('plus')}<span>Add the current folder</span>`, disabled: !/^[a-zA-Z]:\\/.test(loc) || null, onclick: () => { roots.push(loc); save(); drawRoots(); } }));
+    body.append(rows, el('button', { class: 'btn', html: `${icon('plus')}<span>Add the current folder</span>`, disabled: !isFsPath(loc) || null, onclick: () => { roots.push(loc); save(); drawRoots(); } }));
   }
 
   // ---------- drive ----------
