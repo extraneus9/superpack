@@ -11,7 +11,8 @@
       "File details for any file — streams, colour, HDR, chapters — one click to copy.",
       "Keyboard shortcuts for everything."
     ],
-    "note": "Can become your video & audio player in Windows."
+    "note": "Can become your video & audio player in Windows.",
+    "note_mac": "Opens any video or audio file from Finder: right-click › Open With › the player."
   },
   "foldernator": {
     "desc": "A file explorer with status colours and themes.",
@@ -52,6 +53,7 @@
       "Choose your microphone; auto level means you never have to shout.",
       "Works in several languages."
     ],
-    "note": "Downloads its AI models while it installs (about 5 GB). Fastest with an NVIDIA graphics card."
+    "note": "Downloads its AI models while it installs (about 5 GB). Fastest with an NVIDIA graphics card.",
+    "note_mac": "Downloads its AI models while it installs (about 5 GB). Runs on your Mac's own chip; asks once for Microphone and Accessibility."
   }
 }

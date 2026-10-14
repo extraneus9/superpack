@@ -144,7 +144,7 @@ function openSheet(k) {
   $('#c-desc').textContent = a.desc;
   $('#c-lead').textContent = a.lead || '';
   $('#c-points').innerHTML = (a.points || []).map((p) => `<li>${esc(p)}</li>`).join('');
-  $('#c-note').textContent = a.note || '';
+  $('#c-note').textContent = (mac() && a.note_mac) || a.note || '';
   $('#c-size').textContent = `${a.size}${a.extra ? ` ${a.extra}` : ''}`;
   paintSheet();
   $('#sheet').classList.add('open');
