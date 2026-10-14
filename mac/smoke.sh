@@ -28,7 +28,7 @@ if kill -0 $P 2>/dev/null; then ok "the player starts and stays up with a video"
 P=$!; up=""
 for i in $(seq 1 60); do up=$(curl -s http://127.0.0.1:8787/engine.json || true); [ -n "$up" ] && break; sleep 1; done
 echo "$up" | grep -q '"prompterinator"' && ok "The Prompterinator engine answers ($up)" || bad "The Prompterinator engine (log: $(tail -5 "$OUT/prompter.log"))"
-curl -s http://127.0.0.1:8787/index.html | grep -qi "prompterinator" && ok "The Prompterinator page is served" || bad "The Prompterinator page"
+curl -s -o "$OUT/page.html" http://127.0.0.1:8787/index.html; grep -qi "prompterinator" "$OUT/page.html" && ok "The Prompterinator page is served" || bad "The Prompterinator page"
 kill $P 2>/dev/null; pkill -f "Google Chrome.*127.0.0.1:8787" 2>/dev/null || true
 
 # ---------- No More Writing ----------
@@ -42,8 +42,13 @@ grep -q '^ok' "$LOG" 2>/dev/null && ok "No More Writing loads its speech model (
 
 # ---------- Install superpack (the real window, off-screen, into a test folder) ----------
 T="$OUT/install-test"; rm -rf "$T"
+INST="$OUT/stage/Install superpack.app"
+echo "── installer signature:"; codesign --verify --deep --strict -vv "$INST" 2>&1 | tail -4
+ls -la "$INST/Contents/MacOS" "$INST/Contents/Resources" | head -20
 SUPERPACK_QA=1 SUPERPACK_QA_DIR="$T" SUPERPACK_SHOTS="$OUT/shots" \
   tmo 600 "$OUT/stage/Install superpack.app/Contents/MacOS/Install superpack" >"$OUT/installer.log" 2>&1
+echo "installer exit code: $?"
+log show --last 2m --style compact --predicate 'eventMessage CONTAINS "Install superpack"' 2>/dev/null | tail -15
 for a in "the player.app" "The Prompterinator.app" "No More Writing.app"; do
   [ -x "$T/$a/Contents/MacOS/$(defaults read "$T/$a/Contents/Info" CFBundleExecutable 2>/dev/null)" ] && ok "installer copied $a" || bad "installer copied $a"
 done
