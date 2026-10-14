@@ -267,26 +267,24 @@ class MacHelper extends EventEmitter {
   }
 
   // ---------- clipboard: real file copies Finder can paste ----------
-  clipboardSet(paths, cut) {
-    const { clipboard } = electron;
-    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const plist = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><array>${paths.map((p) => `<string>${esc(p)}</string>`).join('')}</array></plist>`;
-    clipboard.clear();
-    clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf8'));
-    if (paths.length) clipboard.writeBuffer('public.file-url', Buffer.from(require('url').pathToFileURL(paths[0]).href, 'utf8'));
+  // the general pasteboard as file URLs, exactly what Finder's ⌘C / ⌘V use
+  async clipboardSet(paths, cut) {
+    await jxa(`ObjC.import('AppKit');
+      const pb = $.NSPasteboard.generalPasteboard; pb.clearContents;
+      pb.writeObjects($(argv.map((p) => $.NSURL.fileURLWithPath(p))));
+      return 'ok';`, paths);
     this.cut = cut ? paths.slice() : null;
     return true;
   }
-  clipboardGet() {
-    const { clipboard } = electron;
+  async clipboardGet() {
     let paths = [];
     try {
-      const xml = clipboard.readBuffer('NSFilenamesPboardType').toString('utf8');
-      paths = [...xml.matchAll(/<string>([\s\S]*?)<\/string>/g)].map((m) => m[1].replace(/&lt;/g, '<').replace(/&amp;/g, '&'));
+      const out = await jxa(`ObjC.import('AppKit');
+        const urls = $.NSPasteboard.generalPasteboard.readObjectsForClassesOptions($([$.NSURL]), $({ NSPasteboardURLReadingFileURLsOnlyKey: true }));
+        const list = []; if (urls) for (let i = 0; i < urls.count; i++) list.push(ObjC.unwrap(urls.objectAtIndex(i).path));
+        return JSON.stringify(list);`);
+      paths = JSON.parse(out.trim() || '[]');
     } catch {}
-    if (!paths.length) {
-      try { const u = clipboard.read('public.file-url'); if (u) paths = [require('url').fileURLToPath(u)]; } catch {}
-    }
     const cut = !!this.cut && paths.length === this.cut.length && paths.every((p, i) => p === this.cut[i]);
     return { paths, cut };
   }
