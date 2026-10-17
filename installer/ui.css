@@ -147,3 +147,13 @@ body.installing .tile .more-wrap, body.done .tile .more-wrap, body.failed .tile 
 .c-foot .go, .c-foot .ghost { padding: 11px 22px; font-size: 13.5px; }
 .chips li.link { cursor: pointer; transition: border-color .15s var(--ui), color .15s var(--ui); }
 .chips li.link:hover { border-color: var(--red); color: var(--red); }
+
+/* 5+ apps (bloom joined 2026-10-17): three rows of compact tiles fit the same space above the options */
+body.many main { gap: 10px; }
+body.many .tile { height: 92px; padding: 12px 18px; grid-template-columns: 50px 1fr; gap: 14px; border-radius: 16px; }
+body.many .tile img.ic { width: 50px; height: 50px; border-radius: 12px; }
+body.many .tile .nm .ogg { --fs: 19px; }
+body.many .tile .ds { font-size: 12px; margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.many .tile .sz { margin-top: 3px; }
+body.many .tile .ck { top: 10px; right: 10px; width: 20px; height: 20px; }
+body.many .tile .open { right: 12px; bottom: 12px; padding: 6px 14px; }

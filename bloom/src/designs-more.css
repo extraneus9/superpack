@@ -1,0 +1,81 @@
+/* ===== Icon-first designs (the author, 2026-10-16): the icon arrives alone, then slides left as the shape opens,
+   and the text comes out of the icon from left to right. s1 = icon in, s2 = shape opens + text. ===== */
+[data-design="rise"] .slot { height: 90px; }
+[data-design="spin"] .slot { height: 94px; }
+[data-design="ribbon"] .slot { height: 78px; }
+
+/* 6 · Rise — the icon rises from below, slides left as the pill opens, text wipes out of it, an accent line draws underneath */
+.n.v-rise { width: 70px; height: 70px; border-radius: 35px; opacity: 1; transform: none; transition: width .75s cubic-bezier(.16, 1, .3, 1); }
+.n.v-rise.s1 { opacity: 1; transform: none; }
+.n.v-rise.s2 { width: 420px; }
+.v-rise .card { background: transparent; transition: background .45s, box-shadow .45s; }
+.n.v-rise.s2 .card { background: #0f1013; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.v-rise .ring { display: none; }
+.n.v-rise.s1 .halo { opacity: 0; }
+.n.v-rise.s2 .halo { opacity: .5; }
+.v-rise .icon { left: 9px; top: 9px; width: 52px; height: 52px; opacity: 0; transform: translateY(70px); transition: transform .6s cubic-bezier(.34, 1.56, .64, 1), opacity .3s; }
+.n.v-rise.s1 .icon { opacity: 1; transform: none; animation: none; }
+.v-rise .txt { left: 76px; width: 318px; opacity: 1; transform: translateY(-56%); clip-path: inset(0 100% 0 0); transition: clip-path .7s cubic-bezier(.65, 0, .35, 1); }
+.n.v-rise.s2 .txt { opacity: 1; transform: translateY(-56%); clip-path: inset(0 0 0 0); transition-delay: .4s; }
+.v-rise .bar { display: block; position: absolute; left: 76px; right: 30px; bottom: 6px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--c), var(--c2), var(--c3), var(--c4)); transform: scaleX(0); transform-origin: left; transition: transform .8s cubic-bezier(.16, 1, .3, 1); }
+.n.v-rise.s2 .bar { transform: scaleX(1); transition-delay: .6s; }
+
+/* 7 · Spin — the icon spins in as a rounded tile, slides left as the card opens, the lines slide out one after another */
+.n.v-spin { width: 76px; height: 76px; border-radius: 20px; opacity: 1; transform: none; transition: width .7s cubic-bezier(.16, 1, .3, 1); }
+.n.v-spin.s1 { opacity: 1; transform: none; }
+.n.v-spin.s2 { width: 410px; }
+.v-spin .card { background: transparent; transition: background .35s; }
+.n.v-spin.s2 .card { background: #121216; }
+.v-spin .halo { display: none; }
+.n.v-spin.s1 .ring { opacity: 0; }
+.n.v-spin.s2 .ring { opacity: 1; }
+.v-spin .icon { left: 12px; top: 12px; width: 52px; height: 52px; border-radius: 16px; transform: rotate(-200deg) scale(0); transition: transform .65s cubic-bezier(.34, 1.56, .64, 1); }
+.n.v-spin.s1 .icon { transform: none; animation: none; }
+.v-spin .txt { left: 80px; width: 304px; opacity: 1; transform: translateY(-50%); }
+.n.v-spin.s2 .txt { opacity: 1; transform: translateY(-50%); }
+.v-spin .txt > * { opacity: 0; transform: translateX(-22px); transition: opacity .4s, transform .6s cubic-bezier(.16, 1, .3, 1); }
+.n.v-spin.s2 .txt > * { opacity: 1; transform: none; }
+.n.v-spin.s2 .txt small { transition-delay: .2s; } .n.v-spin.s2 .txt b { transition-delay: .3s; } .n.v-spin.s2 .txt span { transition-delay: .42s; }
+
+/* 8 · Ribbon — the icon drops in from above, slides left as an arrow-tipped ribbon unrolls, each line revealed in turn */
+.n.v-ribbon { width: 60px; height: 60px; border-radius: 12px; opacity: 1; transform: none; transition: width .75s cubic-bezier(.65, 0, .35, 1), filter .5s; }
+.n.v-ribbon.s1 { opacity: 1; transform: none; }
+.n.v-ribbon.s2 { width: 430px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--c) 60%, transparent)); }
+.v-ribbon .halo, .v-ribbon .ring { display: none; }
+.v-ribbon .card { border-radius: 12px 0 0 12px; background: transparent; clip-path: polygon(0 0, 100% 0, 100% 50%, 100% 100%, 0 100%);
+  transition: background .4s, clip-path .6s cubic-bezier(.65, 0, .35, 1); }
+.n.v-ribbon.s2 .card { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 24%, #0e0e10), color-mix(in srgb, var(--c2) 10%, #0e0e10) 40%, #0e0e10 66%); clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 50%, calc(100% - 22px) 100%, 0 100%); }
+.v-ribbon .icon { left: 8px; top: 8px; width: 44px; height: 44px; border-radius: 10px; opacity: 0; transform: translateY(-64px); transition: transform .6s cubic-bezier(.34, 1.56, .64, 1), opacity .25s; }
+.n.v-ribbon.s1 .icon { opacity: 1; transform: none; animation: none; }
+.v-ribbon .bar { display: block; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(var(--c), var(--c2), var(--c3), var(--c4)); transform: scaleY(0); transition: transform .45s cubic-bezier(.16, 1, .3, 1); z-index: 2; }
+.n.v-ribbon.s2 .bar { transform: scaleY(1); transition-delay: .45s; }
+.v-ribbon .txt { left: 64px; width: 330px; opacity: 1; transform: translateY(-50%); }
+.n.v-ribbon.s2 .txt { opacity: 1; transform: translateY(-50%); }
+.v-ribbon .txt > * { clip-path: inset(0 100% 0 0); transition: clip-path .55s cubic-bezier(.65, 0, .35, 1); }
+.n.v-ribbon.s2 .txt > * { clip-path: inset(0 0 0 0); }
+.n.v-ribbon.s2 .txt small { transition-delay: .35s; } .n.v-ribbon.s2 .txt b { transition-delay: .5s; } .n.v-ribbon.s2 .txt span { transition-delay: .65s; }
+.n.v-ribbon.s2:hover .txt { width: 300px; }
+
+/* ===== Icon look (the author: "simple, not technical"): shape · background · logo size. Applies on top of any design. ===== */
+.n.is-circle .icon { border-radius: 50% !important; }
+.n.is-rounded .icon { border-radius: 28% !important; }
+.n.is-square .icon { border-radius: 6px !important; }
+.n.ib-dark .icon:not(.mono) { background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c) 34%, #1c1c20), #16161a); }
+.n.ib-colour .icon:not(.mono) { background: var(--c); }
+.n.ib-light .icon:not(.mono) { background: #f4f4f5; }
+.n.ib-none .icon:not(.mono) { background: transparent; box-shadow: none; }
+.n.ib-none .icon img { filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .5)); }
+.n.iz-s .icon:not(.round) img { width: 48%; height: 48%; }
+.n.iz-m .icon:not(.round) img { width: 64%; height: 64%; }
+.n.iz-l .icon:not(.round) img { width: 84%; height: 84%; }
+.n.ib-none.iz-l .icon:not(.round) img { width: 100%; height: 100%; }
+
+/* ===== Long messages (longtext.js): "tall" pills wrap the text instead of cutting it to one line. ===== */
+.n.tall .txt { white-space: normal; }
+.n.tall .txt b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow: hidden; line-height: 1.3; }
+.n.tall .txt span { display: -webkit-box; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; line-height: 1.38; margin-top: 1px; }
+.n.tall.l4 .txt span { -webkit-line-clamp: 4; }
+.n.tall.l2 .txt span { -webkit-line-clamp: 2; }
+.n.tall.s2 { height: var(--th) !important; }
+.n.tall { transition: transform .5s cubic-bezier(.34, 1.56, .64, 1), opacity .3s, width .75s cubic-bezier(.16, 1, .3, 1), height .45s cubic-bezier(.16, 1, .3, 1),
+  border-radius .45s, clip-path .8s cubic-bezier(.65, 0, .35, 1), filter .5s !important; }

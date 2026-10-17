@@ -1,0 +1,20 @@
+{
+  "name": "bloom",
+  "productName": "bloom",
+  "version": "0.1.0",
+  "description": "bloom: replaces Windows notification popups with the alva Bloom pill (icon pops, pill unfolds, glowing stroke).",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icons": "electron scripts/make-icons.js",
+    "install-app": "node scripts/install.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.3.6",
+    "electron": "44.5.1"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0"
+  }
+}

@@ -16,6 +16,7 @@ const app = (k) => M.apps.find((a) => a.key === k);
 (async () => {
   M = await window.setup.manifest();
   document.body.classList.add(single() ? 'single' : 'pack');
+  document.body.classList.toggle('many', !single() && M.apps.length > 4); // 5+ apps: compact tiles, three rows
   // one app on its own is already "picked"; in the pack nobody is — people choose
   if (single()) S.picked.add(M.apps[0].key);
   welcome();
@@ -84,7 +85,7 @@ function welcome() {
     : 'Thanks for installing superpack. I built every one of these apps by hand, for my own creative work, and I\'m giving them to you for free.';
   $('#w-p2').textContent = `${one ? "It's" : "They're"} made to be easy to use and to bend to the way you work — change the look, the keys, the motion, almost everything. No accounts, no ads, nothing sent anywhere.`;
   // the apps, scattered like stickers
-  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6]];
+  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6], [96, 96, 88, 9]];
   // (positions set through the DOM: the window's security policy ignores inline style attributes)
   $('#w-art').innerHTML = '';
   M.apps.slice(0, spots.length).forEach((a, i) => {

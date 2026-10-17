@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>bloom</title>
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/inter/index.css">
+<link rel="stylesheet" href="overlay.css">
+<link rel="stylesheet" href="designs-more.css">
+<link rel="stylesheet" href="settings.css">
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="bar">
+  <img class="logo" src="../assets/icon.png" alt=""><span>bloom</span>
+  <div class="wc">
+    <button id="wmin" title="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+    <button id="wmax" title="Maximize"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg></button>
+    <button id="wclose" class="wclose" title="Close"><svg viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button>
+  </div>
+</header>
+
+<div class="power"><span id="state-word">On</span><label class="switch"><input type="checkbox" id="enabled"><span></span></label></div>
+
+<main id="main">
+  <section class="stage" id="stage" title="Click to preview: a real notification with your sound">
+    <div class="glowbed"></div>
+    <div class="holder" id="holder"></div>
+  </section>
+  <div class="actions">
+    <button class="act" id="designbtn"><svg viewBox="0 0 16 16"><rect x="2" y="5" width="12" height="6" rx="3"/><circle cx="5" cy="8" r="1.4"/></svg>Change design <em id="design-name">Bloom</em></button>
+    <span class="cap">Click the notification to preview</span>
+    <button class="act" id="soundbtn"><svg viewBox="0 0 16 16"><path d="M6 12V3.5l7-1.5v8.5"/><circle cx="4.3" cy="12" r="1.8"/><circle cx="11.3" cy="10.5" r="1.8"/></svg>Change sound</button>
+  </div>
+
+  <section class="sound">
+    <button class="play" id="play" title="Play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg></button>
+    <div class="wave" id="wave"></div>
+    <div class="sname">
+      <b id="sname">No sound yet</b>
+      <span>Drop any sound on the window to use it</span>
+    </div>
+  </section>
+
+  <section class="dock">
+    <div class="chip" id="c-where" tabindex="0"><small>Where</small><b id="where-b">Bottom right</b><span class="mini" id="where-mini"><i data-p="tc"></i><i data-p="tr"></i><i data-p="bc"></i><i data-p="br"></i></span>
+      <div class="pop" id="p-where">
+        <div class="scr">
+          <button data-pos="tc" style="left:50%;top:18%">Top center</button><button data-pos="tr" style="left:82%;top:18%">Top right</button>
+          <button data-pos="bc" style="left:50%;top:72%">Bottom center</button><button data-pos="br" style="left:82%;top:72%">Bottom right</button>
+        </div>
+      </div>
+    </div>
+    <div class="chip" id="c-long" tabindex="0"><small>How long</small><b id="long-b">Same as Windows · 5 s</b>
+      <div class="pop list" id="p-long"></div>
+    </div>
+    <div class="chip" id="c-vol"><small>Volume</small><b id="vol-b">100%</b>
+      <input type="range" id="vol" min="0" max="150" step="5"><button class="mute" id="mute" title="Sound on/off"></button>
+    </div>
+    <div class="chip" id="c-start" tabindex="0"><small>Startup</small><b id="start-b">With Windows</b></div>
+  </section>
+
+  <div class="winrow">
+    <div class="wtxt"><b>Hide Windows' own popup</b><span id="win-sub">Only bloom shows. Notifications still arrive. Turn it off to undo.</span></div>
+    <label class="switch"><input type="checkbox" id="hidewin"><span></span></label>
+    <button class="ghost2" id="wintest">Test with a real Windows notification</button>
+    <button class="lnk" id="howbtn">Do it manually</button>
+  </div>
+</main>
+
+<footer class="tick" id="tick">
+  <div class="items" id="ticker"></div>
+  <button class="all" id="all" title="See all notifications"><span id="count">0</span><svg viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></svg></button>
+</footer>
+
+<aside class="drawer" id="drawer">
+  <header><h2>All notifications</h2><span id="dcount"></span><button class="lnk" id="clear">Clear</button>
+    <button class="dclose" id="dclose" title="Close"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button></header>
+  <div class="dlist" id="dlist"></div>
+</aside>
+
+<aside class="designs" id="designs">
+  <header><h2>Notification design</h2><span class="sub">Every notification on your PC arrives in this style</span>
+    <button class="dclose" id="designclose" title="Close"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></header>
+  <div class="dbody">
+    <nav class="rail" id="rail" aria-label="Colour"></nav>
+    <div class="dcol"><section class="look" id="look"></section><div class="cards" id="cards"></div></div>
+  </div>
+  <div class="picker" id="picker">
+    <h4>Your colour</h4>
+    <div class="sv" id="sv"><i id="svdot"></i></div>
+    <input type="range" id="hue" min="0" max="359" step="1">
+    <div class="prow"><span class="pv" id="pv"></span><input id="hex" maxlength="7" spellcheck="false"></div>
+    <div class="prow"><button class="act sm" id="puse">Use this colour</button><button class="lnk" id="pcancel">Cancel</button></div>
+  </div>
+</aside>
+
+<aside class="lib" id="lib">
+  <header><h2>Notification sound</h2><button class="dclose" id="libclose" title="Close"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></header>
+  <div id="liblist"></div>
+  <label class="drop">Drop a sound here, or <span>browse</span><input type="file" id="pick" accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac,.opus" multiple></label>
+</aside>
+
+<div class="dropzone" id="dropzone"><div><b>Drop to make it your notification sound</b><span>wav · mp3 · ogg · m4a · flac</span></div></div>
+<div class="tut" id="tut">
+  <div class="tbox">
+    <div class="thead"><h2>Hide Windows' popup by hand</h2><button class="dclose" id="tclose" title="Close"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
+    <div class="steps" id="steps"></div>
+    <div class="tstage" id="tstage"></div>
+    <div class="cap2"><span class="num" id="tnum">1</span><p id="ttext"></p></div>
+    <div class="tnav"><button class="ghost" id="treplay">Replay</button><button class="ghost" id="topen">Open Windows settings</button><span class="sp"></span>
+      <button class="ghost" id="tback">Back</button><button class="act" id="tnext">Next</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="palette.js"></script>
+<script src="longtext.js"></script>
+<script src="settings.js"></script>
+<script src="tutorial.js"></script>
+</body>
+</html>
