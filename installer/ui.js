@@ -8,7 +8,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 let M = null;          // manifest (+ each app's words from apps.json)
-const S = { picked: new Set(), tasks: { playerdefault: true, desktopicons: false, sourcecode: false }, order: [], fills: {}, status: {}, phase: 'welcome', sheet: null };
+const S = { picked: new Set(), tasks: { playerdefault: true, framehudstart: true, desktopicons: false, sourcecode: false }, order: [], fills: {}, status: {}, phase: 'welcome', sheet: null };
 const single = () => M.mode === 'single';
 const mac = () => M.platform === 'darwin';
 const app = (k) => M.apps.find((a) => a.key === k);
@@ -34,6 +34,7 @@ const app = (k) => M.apps.find((a) => a.key === k);
   $('#opts').innerHTML = [
     // (Windows-only options: on a Mac the apps go to Applications and you pick default apps in Finder › Get Info)
     !mac() && M.apps.some((a) => a.key === 'player') ? `<button class="opt on" data-t="playerdefault"><span class="sw"></span>Make the player my video &amp; audio player <small>Windows asks you to confirm</small></button>` : '',
+    !mac() && M.apps.some((a) => a.key === 'framehud') ? `<button class="opt on" data-t="framehudstart"><span class="sw"></span>Start FrameHUD with Windows <small>then it never asks for admin</small></button>` : '',
     !mac() ? `<button class="opt" data-t="desktopicons"><span class="sw"></span>Desktop shortcuts</button>` : '',
     `<button class="opt" data-t="sourcecode"><span class="sw"></span>Save the source code too <small>to Documents · open source, yours to change</small></button>`,
   ].join('');
@@ -85,7 +86,7 @@ function welcome() {
     : 'Thanks for installing superpack. I built every one of these apps by hand, for my own creative work, and I\'m giving them to you for free.';
   $('#w-p2').textContent = `${one ? "It's" : "They're"} made to be easy to use and to bend to the way you work — change the look, the keys, the motion, almost everything. No accounts, no ads, nothing sent anywhere.`;
   // the apps, scattered like stickers
-  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6], [96, 96, 88, 9]];
+  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6], [96, 96, 88, 9], [6, 100, 80, -10]];
   // (positions set through the DOM: the window's security policy ignores inline style attributes)
   $('#w-art').innerHTML = '';
   M.apps.slice(0, spots.length).forEach((a, i) => {
@@ -118,6 +119,8 @@ function paintFooter() {
   document.querySelectorAll('.tile').forEach((t) => t.classList.toggle('on', S.picked.has(t.dataset.k)));
   const pd = document.querySelector('.opt[data-t="playerdefault"]');
   if (pd) pd.hidden = !S.picked.has('player');
+  const fh = document.querySelector('.opt[data-t="framehudstart"]');
+  if (fh) fh.hidden = !S.picked.has('framehud');
   const go = $('#go'), alt = $('#alt');
   go.className = 'go';
   if (S.phase === 'welcome') {
@@ -200,7 +203,7 @@ async function install() {
   $('#hint').innerHTML = 'Starting… <b>0%</b>';
   $('#sum').textContent = mac() ? 'Copying your apps into Applications…' : 'Windows may ask for permission — click Yes.';
   const go = $('#go'); go.disabled = true; go.className = 'go'; go.textContent = 'Installing…';
-  const tasks = Object.keys(S.tasks).filter((k) => S.tasks[k] && (k !== 'playerdefault' || S.picked.has('player')));
+  const tasks = Object.keys(S.tasks).filter((k) => S.tasks[k] && (k !== 'playerdefault' || S.picked.has('player')) && (k !== 'framehudstart' || S.picked.has('framehud')));
   const res = await window.setup.install(S.order.map((a) => a.key), tasks);
   document.body.classList.remove('installing', 'busy');
   if (res.ok) finish(tasks); else fail(res);
@@ -303,6 +306,10 @@ async function demo() {
   await wait(400); await window.setup.shot('1-pick');
   openSheet(single() ? M.apps[0].key : 'player'); await wait(800); await window.setup.shot('1b-more-player');
   if (!single()) { openSheet('nomorewriting'); await wait(300); await window.setup.shot('1c-more-nmw'); }
+  if (!single() && M.apps.some((a) => a.key === 'framehud')) {
+    closeSheet(); S.picked.add('framehud'); paintFooter(); await wait(500); await window.setup.shot('1d-pick-framehud');
+    openSheet('framehud'); await wait(800); await window.setup.shot('1e-more-framehud');
+  }
   closeSheet(); await wait(500);
   install();
 }

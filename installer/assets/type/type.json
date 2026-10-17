@@ -10,10 +10,12 @@
     "n-prompterinator": 6.1533,
     "n-nomorewriting": 5.4533,
     "n-bloom": 2.0667,
+    "n-framehud": 3.7667,
     "t-player": 3.2867,
     "t-foldernator": 3.8267,
     "t-prompterinator": 6.3,
     "t-nomorewriting": 5.6467,
-    "t-bloom": 2.2533
+    "t-bloom": 2.2533,
+    "t-framehud": 3.9533
   }
 }

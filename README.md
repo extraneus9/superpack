@@ -14,6 +14,7 @@ One installer puts them on your computer: pick all of them or only the ones you 
 | [**The Prompterinator**](./The%20Prompterinator) | A teleprompter that follows your voice. | Windows · Mac |
 | [**No More Writing**](./No%20More%20Writing) | Talk instead of typing. | Windows · Mac |
 | [**bloom**](./bloom) | Your notifications, redesigned, with your sound. | Windows |
+| [**FrameHUD**](./FrameHUD) | Your FPS and PC stats over any game. | Windows |
 
 ### the player
 A modern video and audio player that opens anything — MP4, MKV, MOV, AVI, FLAC, WAV and more — in a blink.
@@ -94,6 +95,21 @@ Every notification on your PC arrives in bloom's own style: the icon appears fir
 > Windows only. Runs quietly next to the clock.
 
 **Runs on:** Windows · **Code:** [`bloom/`](./bloom) — its README explains how to run and build it.
+
+### FrameHUD
+A small overlay that shows how your game is really running: frames per second, frame time and your PC's vitals, right on top of the game.
+
+- FPS, frame time and 1% lows for DirectX, OpenGL and Vulkan games.
+- GPU use, temperature, VRAM, power and clock; CPU and RAM.
+- Ping to the game's own server, found automatically.
+- Pick which stats show, their labels and their order.
+- Your font, colours, opacity and outline; one row or a list.
+- Any corner of any monitor, or drag it where you want.
+- Hotkeys: Ctrl+Shift+F10 show/hide, F11 move, F12 settings.
+
+> Windows only. Counting frames needs admin: tick Start with Windows and it never asks again. GPU stats need an NVIDIA graphics card.
+
+**Runs on:** Windows · **Code:** [`FrameHUD/`](./FrameHUD) — its README explains how to run and build it.
 
 ## What else is in here
 - [`installer/`](./installer) — the superpack setup window (the screen where you pick your apps), for Windows and Mac.

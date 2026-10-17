@@ -79,5 +79,19 @@
       "One switch hides Windows' own popup for every app, and turning it off puts it all back."
     ],
     "note": "Windows only. Runs quietly next to the clock."
+  },
+  "framehud": {
+    "desc": "Your FPS and PC stats over any game.",
+    "lead": "A small overlay that shows how your game is really running: frames per second, frame time and your PC's vitals, right on top of the game.",
+    "points": [
+      "FPS, frame time and 1% lows for DirectX, OpenGL and Vulkan games.",
+      "GPU use, temperature, VRAM, power and clock; CPU and RAM.",
+      "Ping to the game's own server, found automatically.",
+      "Pick which stats show, their labels and their order.",
+      "Your font, colours, opacity and outline; one row or a list.",
+      "Any corner of any monitor, or drag it where you want.",
+      "Hotkeys: Ctrl+Shift+F10 show/hide, F11 move, F12 settings."
+    ],
+    "note": "Windows only. Counting frames needs admin: tick Start with Windows and it never asks again. GPU stats need an NVIDIA graphics card."
   }
 }

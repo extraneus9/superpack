@@ -150,6 +150,8 @@ body.installing .tile .more-wrap, body.done .tile .more-wrap, body.failed .tile 
 
 /* 5+ apps (bloom joined 2026-10-17): three rows of compact tiles fit the same space above the options */
 body.many main { gap: 10px; }
+/* up to four switches (FrameHUD's joined 2026-10-17): tighter rows so the third never reaches the footer */
+body.many #opts { top: 430px; gap: 6px 24px; }
 body.many .tile { height: 92px; padding: 12px 18px; grid-template-columns: 50px 1fr; gap: 14px; border-radius: 16px; }
 body.many .tile img.ic { width: 50px; height: 50px; border-radius: 12px; }
 body.many .tile .nm .ogg { --fs: 19px; }
