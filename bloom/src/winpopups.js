@@ -127,4 +127,17 @@ async function restore() {
   return { count };
 }
 
-module.exports = { hide, restore, pending };
+// Set one or more apps' banner setting directly (value 0/1, or null = no row, Windows' default). Used by QA to make
+// an app look brand-new and to put it back exactly; does not touch the undo backup.
+async function setBanner(ids, value) {
+  return withServiceStopped((db) => {
+    const find = db.prepare('select RecordId id from NotificationHandler where PrimaryId = ?');
+    const put = db.prepare("insert or replace into HandlerSettings(HandlerId, SettingKey, Value) values (?, 's:banner', ?)");
+    const del = db.prepare("delete from HandlerSettings where HandlerId = ? and SettingKey = 's:banner'");
+    let n = 0;
+    for (const id of ids) { const h = find.get(id); if (!h) continue; if (value === null) del.run(h.id); else put.run(h.id, value); n++; }
+    return n;
+  });
+}
+
+module.exports = { hide, restore, pending, setBanner };

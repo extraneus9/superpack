@@ -18,6 +18,6 @@ You need [Node.js](https://nodejs.org) 20+.
 - `src/overlay.*`, `src/designs-more.css` — the notification designs
 - `src/settings.*` — the app window (designs, colours, sound, history)
 - `src/winpopups.js` — "Hide Windows' own popup": the per-app "Show notification banners" setting, in bulk, with undo
-- `src/sound.js` — the sound library; `scripts/make-chime.js` renders the default chime
+- `src/sound.js` — the sound library; `scripts/make-sounds.js` renders the 4 built-in sounds (bloom chime, glass, pop, rise)
 
 Change anything you like — that's the point.

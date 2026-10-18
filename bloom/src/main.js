@@ -12,7 +12,11 @@ const winpopups = require('./winpopups');
 
 const QA = process.argv.includes('--qa'); // offscreen run driven by scripts/qa.js; never appears on screen
 const QA_ONLY = ['{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}', 'WindowsPowerShell', 'v1.0', 'powershell.exe'].join('\\'); // the one app QA may switch
-if (QA) app.setPath('userData', path.join(app.getPath('temp'), 'bloom-qa'));
+if (QA) {
+  app.setPath('userData', path.join(app.getPath('temp'), 'bloom-qa'));
+  // every QA run starts like a fresh install: no settings or sounds left over from the last run
+  for (const f of ['settings.json', 'sounds', 'history.json']) require('fs').rmSync(path.join(app.getPath('userData'), f), { recursive: true, force: true });
+}
 if (!QA && !process.argv.includes('--uninstall') && !app.requestSingleInstanceLock()) { app.quit(); }
 app.setAppUserModelId('alva.bloom');
 
@@ -179,7 +183,27 @@ function imageData(src, info, aumid) {
 }
 
 // ---------- incoming toasts ----------
+// New apps start with Windows' own popup on (Windows' default for any new sender). While the switch is on, bloom
+// keeps it off for them too: a few seconds after any notification (once things are quiet) and every 30 s, it looks
+// for senders whose popup is still on and switches off only those. The very first notification of a brand-new app
+// can still show Windows' popup once — Windows registers the app at that moment — every later one is bloom only.
+let catchTimer = null;
+function catchNewApps(delay = 4000) {
+  if (!settings.hideWindows || popupBusy) return;
+  clearTimeout(catchTimer);
+  catchTimer = setTimeout(async () => {
+    if (!settings.hideWindows || popupBusy) return;
+    const ids = winpopups.pending().filter((id) => !QA || id === QA_ONLY); // QA never touches his other apps
+    if (!ids.length) return;
+    popupBusy = true; sendState();
+    try { const r = await winpopups.hide(ids); log(`new apps: windows popup off for ${ids.join(', ')} ${JSON.stringify(r)}`); }
+    catch (e) { log(`new apps FAILED: ${e.message}`); }
+    finally { popupBusy = false; sendState(); }
+  }, delay);
+}
+
 async function onToast(raw) {
+  catchNewApps(); // a new sender? its Windows popup goes off a few seconds later
   if (settings.paused) return;
   const t = parseToast(raw.payload);
   if (!t.title && !t.body) return;
@@ -272,13 +296,13 @@ function remember(n) {
 function pushSound() {
   if (!win || win.isDestroyed()) return;
   const b = settings.sound.active ? sound.bytes(settings.sound.active) : null;
-  win.webContents.send('sound', { bytes: b, volume: settings.sound.volume / 100, name: settings.sound.active });
+  win.webContents.send('sound', { bytes: b, volume: QA ? 0 : settings.sound.volume / 100 /* QA is always mute: he must never hear tests */, name: settings.sound.active });
 }
 
 function stateForWindow() {
   return {
     settings, windowsSeconds: windowsSeconds(), version: app.getVersion(), packaged: app.isPackaged,
-    sounds: sound.list().map((f) => ({ file: f, label: sound.label(f) })), historyCount: history.length, popupBusy, popupPending: settings.hideWindows ? winpopups.pending().length : 0,
+    sounds: sound.list().map((f) => ({ file: f, label: sound.label(f), builtin: sound.isBuiltin(f) })), historyCount: history.length, popupBusy, popupPending: settings.hideWindows ? winpopups.pending().length : 0,
   };
 }
 function sendState() { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:state', stateForWindow()); }
@@ -335,7 +359,7 @@ ipcMain.on('sound:play', (_e, file) => {
   if (!win || win.isDestroyed()) return;
   const name = file || settings.sound.active;
   if (!name) return;
-  win.webContents.send('sound:play', { bytes: name === settings.sound.active ? null : sound.bytes(name), volume: settings.sound.volume / 100 });
+  win.webContents.send('sound:play', { bytes: name === settings.sound.active ? null : sound.bytes(name), volume: QA ? 0 : settings.sound.volume / 100 /* QA is always mute: he must never hear tests */ });
 });
 ipcMain.handle('sound:add', (_e, paths) => {
   const added = [], errors = [];
@@ -376,7 +400,7 @@ function ensureShortcut() {
 // ---------- QA hooks (scripts/qa.js) ----------
 function qaHooks() {
   const run = require(path.join(__dirname, '..', 'scripts', 'qa-run.js'));
-  win.webContents.once('did-finish-load', () => run({ present, onToast, setHideWindows, winpopups, secondsFor, windowsSeconds, openSettings, setSetting, history: () => history, sound, pushSound, lastPlayed: () => lastPlayed, edgeFlashes: () => edgeFlashes, edgeWin: () => edgeWin, apps, parseToast, Watcher, win, live, settings, place, app }));
+  win.webContents.once('did-finish-load', () => run({ present, onToast, setHideWindows, catchNewApps, winpopups, secondsFor, windowsSeconds, openSettings, setSetting, history: () => history, sound, pushSound, lastPlayed: () => lastPlayed, edgeFlashes: () => edgeFlashes, edgeWin: () => edgeWin, apps, parseToast, Watcher, win, live, settings, place, app }));
 }
 
 // ---------- boot ----------
@@ -389,16 +413,11 @@ app.whenReady().then(async () => {
     return;
   }
   loadSettings();
-  // A new person's first run: start them with bloom's own chime (made for bloom, free to share) if they have no sound yet.
-  if (!settings.soundSeeded) {
-    try {
-      if (!sound.list().length) {
-        fs.mkdirSync(sound.dir(), { recursive: true });
-        fs.writeFileSync(path.join(sound.dir(), 'bloom chime.wav'), fs.readFileSync(path.join(__dirname, '..', 'assets', 'sounds', 'bloom chime.wav')));
-        settings.sound.active = 'bloom chime.wav';
-      }
-    } catch (e) { log(`default sound not seeded: ${e.message}`); }
-    settings.soundSeeded = true;
+  // Sounds are now built into the app (sound.js). Old installs had only the seeded chime copied into their data
+  // folder; move them once to the first built-in (his GTA sound in his build, the chime in the public one).
+  if (!settings.soundDefaultsV2) {
+    if (!settings.sound.active || settings.sound.active === 'bloom chime.wav') settings.sound.active = sound.list()[0] || null;
+    settings.soundDefaultsV2 = true;
     saveSettings();
   }
   loadHistory();
@@ -418,7 +437,8 @@ app.whenReady().then(async () => {
   const atSignIn = require('os').uptime() < 600 || app.getLoginItemSettings().wasOpenedAtLogin;
   watcher.start(atSignIn ? 90 : 0);
   log(`started (sign-in catch-up: ${atSignIn})`);
-  if (settings.hideWindows) setTimeout(() => { if (winpopups.pending().length) setHideWindows(true); }, 30000); // new apps since last time
+  setTimeout(() => catchNewApps(0), 20000); // apps that appeared while bloom was off
+  setInterval(() => catchNewApps(0), 30000); // apps that register without notifying yet
   // warm the app cache for every sender Windows knows, so the first popup already has its icon
   setTimeout(() => {
     try {

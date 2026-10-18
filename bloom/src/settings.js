@@ -312,9 +312,12 @@ function renderLib() {
     const r = el('div', 'snd' + (s.file === state.settings.sound.active ? ' on' : ''));
     const pp = el('button', 'pp'); pp.innerHTML = ICON_PLAY; pp.title = 'Play';
     pp.onclick = (e) => { e.stopPropagation(); api.playSound(s.file); };
-    const rm = el('button', 'rm', 'Remove');
-    rm.onclick = (e) => { e.stopPropagation(); api.removeSound(s.file); };
-    r.append(pp, el('b', '', s.label), rm);
+    r.append(pp, el('b', '', s.label));
+    if (!s.builtin) { // built-in sounds always stay; only your own drops can be removed
+      const rm = el('button', 'rm', 'Remove');
+      rm.onclick = (e) => { e.stopPropagation(); api.removeSound(s.file); };
+      r.append(rm);
+    }
     r.onclick = () => api.set('soundActive', s.file);
     return r;
   }));
