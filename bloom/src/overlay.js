@@ -53,11 +53,13 @@ function add(n) {
   const p = { slot, el: pill, timer: null, closing: false };
   pills.set(n.id, p);
 
-  pill.addEventListener('mouseenter', () => { window.bloom.mouse(false); clearTimeout(p.timer); });
+  // hover pauses the timer; clickability is handled by the pointer tracker below (not mouseenter/leave, see there)
+  pill.addEventListener('mouseenter', () => clearTimeout(p.timer));
   // n.seconds = Windows' own banner time for this toast (0 = it stays until dismissed, like reminders/calls)
-  pill.addEventListener('mouseleave', () => { window.bloom.mouse(true); if (!p.closing && n.seconds) p.timer = setTimeout(() => dismiss(n.id), 2500); });
-  pill.addEventListener('click', () => { window.bloom.open(n.id); dismiss(n.id, true); });
-  x.addEventListener('click', (e) => { e.stopPropagation(); dismiss(n.id); });
+  pill.addEventListener('mouseleave', () => { if (!p.closing && n.seconds) p.timer = setTimeout(() => dismiss(n.id), 2500); });
+  pill.addEventListener('click', () => { if (!p.closing) { window.bloom.open(n.id); dismiss(n.id, true); } });
+  x.addEventListener('click', (e) => { e.stopPropagation(); window.bloom.debug(`× clicked id=${n.id}`); dismiss(n.id); });
+  p.id = n.id;
 
   requestAnimationFrame(() => requestAnimationFrame(() => pill.classList.add('s1')));
   setTimeout(() => pill.classList.add('s2'), OPEN_AT[design] ?? 140); // icon first, then the shape opens
@@ -70,6 +72,30 @@ function mono(icon, name) {
   icon.classList.add('mono');
 }
 
+// The window is click-through except while the pointer is over a pill. Chromium's own mouse events can't drive this
+// on Windows: mouseenter/leave misfire when click-through flips, and while click-through is on nothing reliable
+// arrives — the × lit up but clicks fell through to the desktop (the author, 2026-10-18/19). So main sends the REAL
+// cursor position (window coordinates) many times a second while pills are up; we hit-test it and answer.
+let clickable = false;
+function setClickable(on, why) { if (on !== clickable) { clickable = on; window.bloom.mouse(!on, why); } }
+window.bloom.on('cursor', (c) => {
+  const t = c && document.elementFromPoint(c.x, c.y);
+  const on = !!(t && t.closest('.n'));
+  setClickable(on, on ? `over ${t.className || t.tagName} at ${c.x},${c.y}` : 'off pill');
+});
+// A real press seen by main's click helper (Chromium can drop real clicks on this window): same as clicking here.
+window.bloom.on('press', (c) => {
+  const t = c && document.elementFromPoint(c.x, c.y);
+  const el = t && t.closest('.n');
+  if (!el) return;
+  const id = [...pills].find(([, q]) => q.el === el)?.[0];
+  if (id == null || pills.get(id).closing) return;
+  if (t.closest('.x')) { window.bloom.debug(`× pressed id=${id}`); dismiss(id); }
+  else { window.bloom.debug(`pill pressed id=${id}`); window.bloom.open(id); dismiss(id, true); }
+});
+// what a click actually reaches (written to bloom.log)
+document.addEventListener('mousedown', (e) => window.bloom.debug(`mousedown on ${e.target.className || e.target.tagName} at ${e.clientX},${e.clientY}`), true);
+
 function dismiss(id, opened) {
   const p = pills.get(id);
   if (!p || p.closing) return;
@@ -81,7 +107,7 @@ function dismiss(id, opened) {
   setTimeout(() => {
     p.slot.remove(); pills.delete(id);
     if (!opened) window.bloom.dismissed(id);
-    if (p.el.matches(':hover')) window.bloom.mouse(true);
+    setClickable(false, 'pill gone');
     if (!pills.size) window.bloom.idle();
   }, opened ? 950 : 1250);
 }

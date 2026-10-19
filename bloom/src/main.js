@@ -128,6 +128,7 @@ ipcMain.on('edge', (_e, color) => { if (settings.design === 'edge') flashEdge(co
 function present(n) {
   live.set(n.id, n);
   if (!shown && !QA) { win.showInactive(); win.setAlwaysOnTop(true, 'screen-saver'); shown = true; }
+  if (!cursorTimer) trackCursor(true);
   remember(n);
   const seconds = n.seconds != null ? n.seconds : secondsFor(null);
   const withSound = settings.sound.on && !!settings.sound.active;
@@ -135,10 +136,76 @@ function present(n) {
   win.webContents.send('notify', { id: n.id, app: n.app, title: n.title, body: n.body, icon: n.icon, iconRound: n.iconRound, seconds, sound: withSound });
 }
 
-ipcMain.on('mouse', (_e, ignore) => win && win.setIgnoreMouseEvents(!!ignore, { forward: true }));
-ipcMain.on('idle', () => { if (shown) { win.hide(); shown = false; } win.setIgnoreMouseEvents(true, { forward: true }); });
-ipcMain.on('dismissed', (_e, id) => live.delete(id));
-ipcMain.on('open', (_e, id) => { const n = live.get(id); live.delete(id); if (n) activate(n); });
+// Click-through is decided from the REAL cursor: while the overlay is up, its position (in window coordinates) goes to
+// the overlay ~16x a second, which hit-tests the pills and answers with 'mouse'. Outside the window = click-through.
+let cursorTimer = null;
+// The click helper (assets/helper/clickwatch.exe, 4 KB): reads the primary mouse button while pills are up, because
+// on the author's PC Chromium never delivered real clicks to this overlay even when it was clickable and on top (diag
+// 2026-10-19: WindowFromPoint = bloom, nothing above, still no mousedown). A press on a pill → 'press' to the overlay.
+let clickHelper = null;
+function helperCmd(cmd) {
+  if (QA) return;
+  if (!clickHelper) {
+    const exe = path.join(__dirname, '..', 'assets', 'helper', 'clickwatch.exe').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+    try {
+      clickHelper = require('child_process').spawn(exe, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      clickHelper.on('error', (e) => { log(`click helper: ${e.message}`); clickHelper = null; });
+      clickHelper.on('exit', () => { clickHelper = null; });
+      let buf = '';
+      clickHelper.stdout.on('data', (d) => {
+        buf += d; let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const [kind, px, py] = buf.slice(0, i).trim().split(' '); buf = buf.slice(i + 1);
+          if (kind !== 'down' || !win || win.isDestroyed()) continue;
+          const c = screen.screenToDipPoint({ x: +px, y: +py }), b = win.getBounds();
+          const x = Math.round(c.x - b.x), y = Math.round(c.y - b.y);
+          if (x >= 0 && y >= 0 && x < b.width && y < b.height) win.webContents.send('press', { x, y });
+        }
+      });
+    } catch (e) { log(`click helper: ${e.message}`); clickHelper = null; return; }
+  }
+  try { clickHelper.stdin.write(cmd + '\n'); } catch {}
+}
+app.on('will-quit', () => { try { clickHelper && clickHelper.kill(); } catch {} });
+
+function trackCursor(on) {
+  clearInterval(cursorTimer); cursorTimer = null;
+  helperCmd(on ? 'on' : 'off');
+  if (!on || QA) return;
+  cursorTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) return;
+    const c = screen.getCursorScreenPoint(), b = win.getBounds();
+    const x = c.x - b.x, y = c.y - b.y;
+    if (x < 0 || y < 0 || x >= b.width || y >= b.height) win.webContents.send('cursor', null);
+    else win.webContents.send('cursor', { x, y });
+  }, 60);
+}
+ipcMain.on('mouse', (_e, ignore, why) => {
+  if (!win) return;
+  win.setIgnoreMouseEvents(!!ignore, { forward: true });
+  // full-screen always-on-top windows (NVIDIA overlay, Windows' own toast host) can sit above us: get back on top to take the click
+  if (!ignore && !QA) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); }
+  log(`overlay ${ignore ? 'click-through' : 'CLICKABLE'} (${why || ''})`);
+  if (!ignore) diagAbove();
+});
+// Diagnostic for "clicks never arrive" (2026-10-19): which windows sit above the overlay at the cursor. Read-only, silent,
+// at most every 20 s.
+let lastDiag = 0;
+function diagAbove() {
+  if (QA || Date.now() - lastDiag < 20000) return;
+  lastDiag = Date.now();
+  const c = screen.getCursorScreenPoint();
+  const src = path.join(__dirname, 'diag', 'above.ps1');
+  const tmp = path.join(app.getPath('temp'), 'bloom-above.ps1'); // asar files can't be run by powershell directly
+  try { fs.writeFileSync(tmp, fs.readFileSync(src)); } catch (e) { log(`diag: ${e.message}`); return; }
+  const hwnd = win.getNativeWindowHandle().readBigUInt64LE(0).toString();
+  require('child_process').execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmp, hwnd, String(c.x), String(c.y)],
+    { windowsHide: true, timeout: 20000 }, (e, so, se) => log(`diag at ${c.x},${c.y}: ${String(so || se || (e && e.message)).trim().slice(0, 1500)}`));
+}
+ipcMain.on('debug', (_e, msg) => log(`overlay: ${msg}`));
+ipcMain.on('idle', () => { if (shown) { win.hide(); shown = false; } trackCursor(false); win.setIgnoreMouseEvents(true, { forward: true }); });
+ipcMain.on('dismissed', (_e, id) => { live.delete(id); log(`closed id=${id}`); });
+ipcMain.on('open', (_e, id) => { const n = live.get(id); live.delete(id); log(`clicked id=${id}`); if (n) activate(n); });
 
 function activate(n) {
   if (QA) return;
@@ -436,7 +503,7 @@ app.whenReady().then(async () => {
   // Just signed in (PC up < 10 min, or launched by the startup entry): show what arrived in the last 90 s too.
   const atSignIn = require('os').uptime() < 600 || app.getLoginItemSettings().wasOpenedAtLogin;
   watcher.start(atSignIn ? 90 : 0);
-  log(`started (sign-in catch-up: ${atSignIn})`);
+  { const d = screen.getPrimaryDisplay(); log(`started (sign-in catch-up: ${atSignIn}) display ${d.bounds.width}x${d.bounds.height} scale ${d.scaleFactor}`); }
   setTimeout(() => catchNewApps(0), 20000); // apps that appeared while bloom was off
   setInterval(() => catchNewApps(0), 30000); // apps that register without notifying yet
   // warm the app cache for every sender Windows knows, so the first popup already has its icon

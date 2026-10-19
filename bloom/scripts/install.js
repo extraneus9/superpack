@@ -25,7 +25,7 @@ function stopInstalled() {
   const [built] = await packager({
     dir: appDir, out: stage, overwrite: true, platform: 'win32', arch: 'x64',
     name: 'bloom', executableName: 'bloom', icon: path.join(appDir, 'assets', 'icon.ico'),
-    asar: true, prune: true, quiet: true,
+    asar: { unpack: '**/assets/helper/*.exe' }, prune: true, quiet: true, // the click helper runs as its own process
     ignore: [/^\/scripts($|\/)/, /^\/qa-out($|\/)/, /^\/package-lock\.json$/],
     appCopyright: 'alva',
     win32metadata: { CompanyName: 'alva', FileDescription: 'bloom', ProductName: 'bloom', InternalName: 'bloom', OriginalFilename: 'bloom.exe' },

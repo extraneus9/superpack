@@ -14,7 +14,7 @@ const SQL = `
   from Notification n
   join NotificationHandler h on h.RecordId = n.HandlerId
   left join TransientTable tt on tt.NotificationId = n.Id
-  where n.[Order] > ? and n.Type = 'toast'
+  where (n.[Order] > ? or n.Id > ?) and n.Type = 'toast'
   order by n.[Order]`;
 
 class Watcher {
@@ -27,7 +27,7 @@ class Watcher {
   open() {
     this.db = new DatabaseSync(DB, { readOnly: true });
     this.q = this.db.prepare(SQL);
-    this.qMax = this.db.prepare('select coalesce(max([Order]), 0) m from Notification');
+    this.qMax = this.db.prepare('select coalesce(max([Order]), 0) m, coalesce(max(Id), 0) i from Notification');
   }
 
   // catchUpSec > 0: also deliver toasts that arrived in the last N seconds (used at sign-in, when apps like
@@ -36,11 +36,11 @@ class Watcher {
     this.open();
     if (catchUpSec > 0) {
       const cutoff = BigInt(Date.now() - catchUpSec * 1000 + 11644473600000) * 10000n; // FILETIME of (now - catchUp)
-      const r = this.db.prepare("select coalesce(max([Order]), 0) m from Notification where ArrivalTime < ?").get(cutoff);
-      this.last = Number(r.m);
+      const r = this.db.prepare("select coalesce(max([Order]), 0) m, coalesce(max(Id), 0) i from Notification where ArrivalTime < ?").get(cutoff);
+      this.last = Number(r.m); this.lastId = Number(r.i);
       setTimeout(() => this.check(), 1500); // after the overlay and sound are loaded
     } else {
-      this.last = Number(this.qMax.get().m); // only what arrives from now on
+      const r = this.qMax.get(); this.last = Number(r.m); this.lastId = Number(r.i); // only what arrives from now on
     }
     try {
       this.fsw = fs.watch(DIR, (_e, f) => { if (!f || String(f).startsWith('wpndatabase')) this.kick(); });
@@ -53,10 +53,13 @@ class Watcher {
   check() {
     let rows;
     try {
-      rows = this.q.all(this.last);
+      // A toast that REPLACES an earlier one (Snipping Tool on every new screenshot) gets a new Id but keeps the old
+      // one's Order, so Order alone missed it (the author's 2nd screenshot, 2026-10-19). New Ids count too.
+      rows = this.q.all(this.last, this.lastId);
       if (!rows.length) {
-        const max = Number(this.qMax.get().m);
-        if (max < this.last) this.last = max; // store was compacted/reset
+        const r = this.qMax.get();
+        if (Number(r.m) < this.last) this.last = Number(r.m); // store was compacted/reset
+        if (Number(r.i) < this.lastId) this.lastId = Number(r.i);
         return;
       }
     } catch {
@@ -67,6 +70,7 @@ class Watcher {
     for (const r of rows) {
       this.last = Math.max(this.last, Number(r.o));
       const id = Number(r.id);
+      this.lastId = Math.max(this.lastId, id);
       if (this.seen.has(id)) continue;
       this.seen.add(id);
       if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value);
