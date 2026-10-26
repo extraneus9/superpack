@@ -17,6 +17,7 @@ const app = (k) => M.apps.find((a) => a.key === k);
   M = await window.setup.manifest();
   document.body.classList.add(single() ? 'single' : 'pack');
   document.body.classList.toggle('many', !single() && M.apps.length > 4); // 5+ apps: compact tiles, three rows
+  document.body.classList.toggle('lots', !single() && M.apps.length > 6); // 7+ apps: three columns, so it stays three rows
   // one app on its own is already "picked"; in the pack nobody is — people choose
   if (single()) S.picked.add(M.apps[0].key);
   welcome();
@@ -86,7 +87,7 @@ function welcome() {
     : 'Thanks for installing superpack. I built every one of these apps by hand, for my own creative work, and I\'m giving them to you for free.';
   $('#w-p2').textContent = `${one ? "It's" : "They're"} made to be easy to use and to bend to the way you work — change the look, the keys, the motion, almost everything. No accounts, no ads, nothing sent anywhere.`;
   // the apps, scattered like stickers
-  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6], [96, 96, 88, 9], [6, 100, 80, -10]];
+  const spots = one ? [[60, 70, 180, -5]] : [[10, 20, 118, -8], [150, 0, 104, 7], [30, 168, 104, 5], [164, 150, 120, -6], [96, 96, 88, 9], [6, 100, 80, -10], [196, 84, 84, 11]];
   // (positions set through the DOM: the window's security policy ignores inline style attributes)
   $('#w-art').innerHTML = '';
   M.apps.slice(0, spots.length).forEach((a, i) => {
@@ -211,6 +212,8 @@ async function install() {
 
 // where each app's tile stands, 0..1, from one progress message
 const NMW = { files: [0, .35], 'ollama-download': [.35, .5], 'ollama-install': [.5, .55], model: [.55, .9], speech: [.9, .98] };
+// apps that download after their files: their tile only fills this far while copying
+const AFTER = { nomorewriting: NMW.files[1], depthmotion: .1 };
 const DONE = 'Installed ✓';
 function onProgress(m) {
   if (S.phase !== 'installing' || !m || m.step === 'done') return;
@@ -223,14 +226,16 @@ function onProgress(m) {
       let f = Math.max(0, Math.min(1, (m.p - start) / share));
       if (i < cur) f = 1; // an earlier app is finished
       if (a.key === m.app && f >= 1) f = .995;
-      const tileF = a.key === 'nomorewriting' ? NMW.files[0] + f * (NMW.files[1] - NMW.files[0]) : f;
-      if (f > 0) setFill(a.key, tileF, a.key === m.app ? `Installing… <span class="pct">${Math.round(f * 100)}%</span>` : f >= 1 && a.key !== 'nomorewriting' ? DONE : null);
+      const tileF = AFTER[a.key] ? f * AFTER[a.key] : f;
+      if (f > 0) setFill(a.key, tileF, a.key === m.app ? `Installing… <span class="pct">${Math.round(f * 100)}%</span>` : f >= 1 && !AFTER[a.key] ? DONE : null);
       cum += a.bytes;
     });
   } else {
     // after the files: every app is copied; the player connects to Windows, No More Writing fetches its models
-    for (const a of S.order) if (a.key !== 'nomorewriting' && a.key !== m.app && S.status[a.key] !== DONE) setFill(a.key, 1, DONE);
+    for (const a of S.order) if (!AFTER[a.key] && a.key !== m.app && S.status[a.key] !== DONE) setFill(a.key, 1, DONE);
     if (m.step === 'register') setFill('player', .995, 'Connecting it to Windows…');
+    if (m.step === 'engine') setFill('depthmotion', .12, 'Downloading its AI engine (about 3 GB)…');
+    if (m.app !== 'depthmotion' && S.fills.depthmotion >= .12) setFill('depthmotion', 1, DONE);
     if (NMW[m.step]) {
       const [lo, hi] = NMW[m.step];
       const f = m.p > 0 ? m.p / 1000 : 0;

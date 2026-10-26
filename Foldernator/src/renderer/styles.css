@@ -748,3 +748,17 @@ body.item-dragging, body.item-dragging * { cursor: default !important; }
 /* macOS: the traffic lights sit top-left, so the tab strip starts after them (Windows keeps its buttons top-right) */
 html.mac #titlebar, html.mac[data-material="liquid"][data-glass-layout="single"] #titlebar { padding-left: 82px; }
 html.mac { --overlay-w: 12px; }
+
+/* search suggestions dropdown */
+#search { position: relative; }
+#suggest { position: absolute; top: calc(100% + 6px); right: 0; width: max(100%, 460px); max-width: 70vw; z-index: 1200; display: none; flex-direction: column; padding: 4px; border-radius: 10px; background: var(--panel-solid); box-shadow: 0 14px 40px rgba(0,0,0,.45), 0 0 0 1px var(--border); }
+#suggest.on { display: flex; }
+.sg-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 7px; cursor: default; min-width: 0; }
+.sg-row.sel, .sg-row:hover { background: var(--hover); }
+.sg-ic { width: 20px; height: 20px; flex: none; display: grid; place-items: center; }
+.sg-ic img { width: 18px; height: 18px; }
+.sg-text { display: flex; flex-direction: column; min-width: 0; }
+.sg-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.sg-name b { color: var(--accent); font-weight: 700; }
+.sg-path { font-size: .82em; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.sg-foot { font-size: .78em; color: var(--text-faint); padding: 6px 8px 3px; border-top: 1px solid var(--border); margin-top: 3px; }

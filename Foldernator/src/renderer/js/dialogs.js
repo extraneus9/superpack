@@ -23,7 +23,8 @@ export function toast(text, kind = 'info', { id, ms, action } = {}) {
     t.append(b);
   }
   clearTimeout(t._timer);
-  if (kind !== 'busy' && !action) t._timer = setTimeout(() => dismiss(t, id), ms || (kind === 'err' ? 7000 : 3500));
+  // Toasts with a button stay a little longer, but still go away (the update also has a Restart button in the toolbar).
+  if (kind !== 'busy') t._timer = setTimeout(() => dismiss(t, id), ms || (action ? 8000 : kind === 'err' ? 7000 : 3500));
   return t;
 }
 

@@ -1,0 +1,18 @@
+DepthMotion — third-party parts
+
+Video Depth Anything (code in engine/vda) — ByteDance Ltd., Apache License 2.0 (engine/vda/LICENSE).
+  https://github.com/DepthAnything/Video-Depth-Anything
+  Small model (downloaded during setup) — Apache License 2.0.
+  Large model (downloaded the first time you pick "Best") — CC BY-NC 4.0: non-commercial use only.
+  For commercial work, use "Fast" (Small model) or ask ByteDance for a licence.
+
+SAM 2.1 (people tracking, engine/people.py) — Meta, Apache License 2.0; model downloaded the first time People is used.
+  https://github.com/facebookresearch/sam2
+Faster R-CNN person finder — torchvision (BSD), COCO-trained weights; downloaded the first time People is used.
+hydra-core, omegaconf, iopath — MIT / BSD.
+
+uv (uv.exe, sets up the private Python) — Astral, MIT / Apache 2.0.        https://github.com/astral-sh/uv
+PyTorch, torchvision — BSD-style licence.                                  https://pytorch.org
+OpenCV — Apache 2.0.  NumPy — BSD.  einops — MIT.  easydict — LGPL-3.0.  tqdm — MIT / MPL-2.0.
+FFmpeg (through imageio-ffmpeg) — LGPL / GPL.                              https://ffmpeg.org
+Inter typeface — SIL Open Font License 1.1.

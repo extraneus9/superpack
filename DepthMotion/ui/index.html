@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DepthMotion</title>
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<header>
+  <img id="title" src="assets/title.png" alt="DepthMotion.">
+  <p class="lede">Real footage in. Pure motion out.</p>
+  <div id="gpu" class="chip"><i></i><span>Checking your graphics card…</span></div>
+</header>
+
+<aside>
+  <!-- source -->
+  <section class="tile" id="source">
+    <label id="drop">
+      <input type="file" id="file" accept="video/*" hidden>
+      <svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+      <b>Drop a clip</b>
+      <span>or click to choose · mp4, mov, webm</span>
+    </label>
+    <div id="clip" hidden>
+      <video id="src" muted playsinline preload="auto"></video>
+      <div class="meta"><span id="clipname"></span><button id="swap">Change</button></div>
+      <div id="trim">
+        <div class="track"><div class="sel"></div><div class="head"></div></div>
+        <input type="range" id="tin" min="0" max="1000" value="0" step="1" aria-label="In point">
+        <input type="range" id="tout" min="0" max="1000" value="1000" step="1" aria-label="Out point">
+      </div>
+      <div class="times"><span>In <b id="vin">0.00</b>s</span><span id="vlen"></span><span>Out <b id="vout">0.00</b>s</span></div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h3>Quality</h3>
+    <div class="seg" id="quality">
+      <button data-v="best" class="on">Best<small>Large model</small></button>
+      <button data-v="fast">Fast<small>Small model</small></button>
+    </div>
+  </section>
+
+  <section class="group">
+    <h3>Passes</h3>
+    <div class="passes" id="passes">
+      <button data-v="clay" class="on"><b>Clay</b><small>Seedance 2.5 blockout</small></button>
+      <button data-v="depth" class="on"><b>Depth</b><small>Kling · ControlNet</small></button>
+      <button data-v="tinted"><b>Depth + people</b><small>Depth, each person tinted</small></button>
+      <button data-v="normal"><b>Normal</b><small>Surface detail</small></button>
+      <button data-v="color"><b>Colour</b><small>Read by eye</small></button>
+      <button data-v="people"><b>People</b><small>One flat colour each</small></button>
+      <button data-v="compare" class="on"><b>Compare</b><small>Source beside depth</small></button>
+      <button data-v="png16"><b>16-bit</b><small>PNG frames for 3D</small></button>
+    </div>
+    <div id="rampRow" hidden>
+      <span>Colour ramp</span>
+      <div class="ramps" id="ramp">
+        <button data-v="inferno" class="on" title="Inferno"></button>
+        <button data-v="turbo" title="Turbo"></button>
+        <button data-v="magma" title="Magma"></button>
+        <button data-v="viridis" title="Viridis"></button>
+        <button data-v="plasma" title="Plasma"></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h3>People</h3>
+    <label class="switch"><input type="checkbox" id="pplOn"><i></i>Colour each person — so the model knows who is who</label>
+    <div id="ppl" hidden>
+      <div id="pplFrame"><img id="pplImg" alt=""><svg id="pplBoxes"></svg><span id="pplMsg"></span></div>
+      <div id="pplChips"></div>
+      <label class="switch"><input type="checkbox" id="onlyPeople"><i></i>Only the people — black out everything else</label>
+    </div>
+  </section>
+
+  <section class="group">
+    <h3>Isolate subjects <output id="isoVal">Off</output></h3>
+    <input type="range" id="iso" min="0" max="90" value="0">
+    <p class="hint">Blacks out everything behind the subjects, so the model copies the bodies, not the set.</p>
+    <label class="switch"><input type="checkbox" id="invert"><i></i>Invert — near is black</label>
+  </section>
+
+  <button id="go" disabled>Extract motion</button>
+</aside>
+
+<main class="tile" id="stage">
+  <div id="empty">
+    <div class="ghost"></div>
+    <p>Your passes appear here.</p>
+    <span>Best on a single action, 3 to 10 seconds long.</span>
+  </div>
+  <div id="work" hidden>
+    <div class="pct"><b id="pct">0</b><small>%</small></div>
+    <p id="msg">Starting</p>
+    <div class="bar"><i id="barfill"></i></div>
+  </div>
+  <div id="result" hidden>
+    <video id="view" controls loop playsinline></video>
+    <nav id="tabs"></nav>
+    <div class="actions">
+      <button id="openFolder">Open folder</button>
+      <button id="copySeed" class="ghostbtn">Copy Seedance 2.5 line</button>
+      <span id="saved"></span>
+    </div>
+  </div>
+  <div id="err" hidden><p></p><button>OK</button></div>
+</main>
+
+<footer><span>DepthMotion by alva · depth from Video Depth Anything (ByteDance)</span><span id="lic"></span></footer>
+<script src="ui.js"></script>
+</body>
+</html>

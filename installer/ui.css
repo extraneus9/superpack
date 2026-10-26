@@ -159,3 +159,10 @@ body.many .tile .ds { font-size: 12px; margin-top: 0; white-space: nowrap; overf
 body.many .tile .sz { margin-top: 3px; }
 body.many .tile .ck { top: 10px; right: 10px; width: 20px; height: 20px; }
 body.many .tile .open { right: 12px; bottom: 12px; padding: 6px 14px; }
+
+/* seven apps and up (DepthMotion joined 2026-10-26): three columns keep the grid at three rows above the switches */
+body.lots main { grid-template-columns: 1fr 1fr 1fr; }
+body.lots .tile { padding: 12px 14px; grid-template-columns: 44px 1fr; gap: 12px; }
+body.lots .tile img.ic { width: 44px; height: 44px; border-radius: 11px; }
+body.lots .tile .nm .ogg { --fs: 18px; }
+body.lots .tile .sz { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 4px; }

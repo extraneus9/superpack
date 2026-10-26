@@ -15,6 +15,7 @@ One installer puts them on your computer: pick all of them or only the ones you 
 | [**No More Writing**](./No%20More%20Writing) | Talk instead of typing. | Windows · Mac |
 | [**bloom**](./bloom) | Your notifications, redesigned, with your sound. | Windows |
 | [**FrameHUD**](./FrameHUD) | Your FPS and PC stats over any game. | Windows |
+| [**DepthMotion**](./DepthMotion) | Real footage in, pure motion out. | Windows |
 
 ### the player
 A modern video and audio player that opens anything — MP4, MKV, MOV, AVI, FLAC, WAV and more — in a blink.
@@ -110,6 +111,22 @@ A small overlay that shows how your game is really running: frames per second, f
 > Windows only. Counting frames needs admin: tick Start with Windows and it never asks again. GPU stats need an NVIDIA graphics card.
 
 **Runs on:** Windows · **Code:** [`FrameHUD/`](./FrameHUD) — its README explains how to run and build it.
+
+### DepthMotion
+Turns any clip into motion references for AI video: the bodies, timing and camera of a real scene, without its faces, clothes or set. Feed it to Seedance, Kling or a depth ControlNet and the generation moves like the real thing.
+
+- Clay pass: a grey clay render of the scene, made for Seedance 2.5's blockout (white model) reference.
+- People in colour: it finds and follows each person (through punches, crossings and cover) and gives each their own colour, so the model knows who is who.
+- Depth pass (near is white) for Kling motion, Wan VACE and depth ControlNets.
+- Normal map, colour depth with five ramps, and 16-bit PNG frames for Blender or Resolve.
+- Trim to the exact action with in and out points.
+- Isolate subjects: blacks out the set so only the people's motion is copied.
+- Steady from frame to frame, no flicker, on clips of any length.
+- Runs on your own graphics card. Nothing is uploaded.
+
+> Windows only. Needs an NVIDIA graphics card. Setup downloads its AI engine once (about 3 GB). The Best quality model is for non-commercial use; Fast is free for any use.
+
+**Runs on:** Windows · **Code:** [`DepthMotion/`](./DepthMotion) — its README explains how to run and build it.
 
 ## What else is in here
 - [`installer/`](./installer) — the superpack setup window (the screen where you pick your apps), for Windows and Mac.

@@ -15,8 +15,8 @@ const LINES = {
   thanks: `Thank you${dot}`,
   'all-set': `All set${dot}`,
   'not-done': `Not finished${dot}`,
-  'n-player': 'the player', 'n-foldernator': 'Foldernator', 'n-prompterinator': 'The Prompterinator', 'n-nomorewriting': 'No More Writing', 'n-bloom': 'bloom', 'n-framehud': 'FrameHUD',
-  't-player': `the player${dot}`, 't-foldernator': `Foldernator${dot}`, 't-prompterinator': `The Prompterinator${dot}`, 't-nomorewriting': `No More Writing${dot}`, 't-bloom': `bloom${dot}`, 't-framehud': `FrameHUD${dot}`,
+  'n-player': 'the player', 'n-foldernator': 'Foldernator', 'n-prompterinator': 'The Prompterinator', 'n-nomorewriting': 'No More Writing', 'n-bloom': 'bloom', 'n-framehud': 'FrameHUD', 'n-depthmotion': 'DepthMotion',
+  't-player': `the player${dot}`, 't-foldernator': `Foldernator${dot}`, 't-prompterinator': `The Prompterinator${dot}`, 't-nomorewriting': `No More Writing${dot}`, 't-bloom': `bloom${dot}`, 't-framehud': `FrameHUD${dot}`, 't-depthmotion': `DepthMotion${dot}`,
 };
 const FS = 120, LH = 1.25; // font size and line box of the master renders
 

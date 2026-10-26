@@ -1,0 +1,9 @@
+# Installed by DepthMotion.exe into %LOCALAPPDATA%\DepthMotion\runtime the first time it runs.
+# torch + torchvision come from the CUDA 12.8 index (RTX 20xx through 50xx); everything else from PyPI.
+numpy
+opencv-python-headless
+einops
+easydict
+tqdm
+imageio-ffmpeg
+sam2

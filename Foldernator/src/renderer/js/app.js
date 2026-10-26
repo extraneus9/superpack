@@ -209,7 +209,7 @@ function switchTab(i) {
   const t = app.tab();
   $('#search-input').value = t.filter || (t.search ? t.search.query : '');
   renderChrome();
-  if (!t.loaded && !t.loading) load(t);
+  if ((!t.loaded || t.stale) && !t.loading) { t.stale = false; load(t, { keep: t.loaded }); }
   else view.render({ keepScroll: true });
   updateWatch();
   saveSession();
@@ -1438,7 +1438,7 @@ function renderBanner() {
   const s = t.search;
   const b = el('div', { class: 'view-banner' },
     s.running ? el('div', { class: 'spinner' }) : el('span', { html: icon('search', 14) }),
-    el('span', { class: 'grow', text: `${s.running ? 'Searching' : 'Results'} for “${s.query}” in ${titleFor(s.root)} — ${s.items.length.toLocaleString()}${s.capped ? '+' : ''} found` }),
+    el('span', { class: 'grow', text: `${s.running ? 'Searching' : 'Results'} for “${s.query}” in ${titleFor(s.root)} — ${s.items.length.toLocaleString()}${s.capped ? '+' : ''} found${s.indexed ? ` · ${s.ms} ms` : ''}` }),
     s.running ? el('button', { text: 'Stop', onclick: () => { api.searchCancel(s.sid); } }) : null,
     el('button', { text: 'Close search', onclick: () => clearSearch() }));
   if (old) old.replaceWith(b); else content.prepend(b);
@@ -1458,10 +1458,87 @@ function renderChrome() {
 // ---------- search ----------
 const searchInput = () => $('#search-input');
 
+// Instant search: as you type (2+ letters), the index answers for everything inside this folder — sub-folders
+// included — in milliseconds. Folders the index doesn't cover fall back to filtering what's on screen; Enter
+// still runs the classic deep scan there.
+let ixTimer = 0, ixToken = 0;
+// ---------- suggestions while typing (the index answers in a few ms; only ~10 rows are drawn) ----------
+let sugToken = 0, sugTimer = 0, sugItems = [], sugSel = -1;
+const sugBox = () => $('#suggest');
+function hideSuggest() { sugItems = []; sugSel = -1; const b = sugBox(); if (b) { b.classList.remove('on'); b.replaceChildren(); } }
+function suggestSoon(q) {
+  clearTimeout(sugTimer);
+  if (q.length < 2) { hideSuggest(); return; }
+  sugTimer = setTimeout(() => showSuggest(q), 60);
+}
+async function showSuggest(q) {
+  const t = app.tab();
+  const token = ++sugToken;
+  const here = isFsPath(t.loc) ? t.loc : null;
+  let res;
+  try { res = await api.indexSearch({ q, under: null, prefer: here, max: 10, statLimit: 0 }); } catch { return; }
+  if (token !== sugToken || searchInput().value.trim() !== q || document.activeElement !== searchInput()) return;
+  sugItems = res.items || []; sugSel = -1;
+  const b = sugBox();
+  if (!sugItems.length) { b.classList.remove('on'); b.replaceChildren(); return; }
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const mark = (name) => { // bold the typed letters
+    const low = name.toLowerCase(); const on = new Array(name.length).fill(false);
+    for (const w of words) { const i = low.indexOf(w); if (i >= 0) for (let k = i; k < i + w.length; k++) on[k] = true; }
+    let html = '', open = false;
+    for (let k = 0; k < name.length; k++) { if (on[k] !== open) { html += on[k] ? '<b>' : '</b>'; open = on[k]; } html += name[k].replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    return html + (open ? '</b>' : '');
+  };
+  b.replaceChildren(...sugItems.map((it, i) => {
+    const dirPath = it.p.slice(0, it.p.length - it.n.length).replace(/\\$/, '');
+    const row = el('div', { class: 'sg-row', role: 'option', dataset: { i: String(i) } },
+      el('span', { class: 'sg-ic', html: it.d ? folderSvg(app.themeFolder(), { size: 18 }) : `<img src="ficon://f/?p=${encodeURIComponent(it.p)}&s=normal" alt="">` }),
+      el('span', { class: 'sg-text' }, el('span', { class: 'sg-name', html: mark(it.n) }), el('span', { class: 'sg-path', text: dirPath })));
+    row.addEventListener('mousedown', (e) => { e.preventDefault(); pickSuggest(i); });
+    row.addEventListener('mousemove', () => setSugSel(i));
+    return row;
+  }), el('div', { class: 'sg-foot', text: `Enter: all results · ↑↓ choose · ${res.ms} ms` }));
+  b.classList.add('on');
+}
+function setSugSel(i) { sugSel = i; sugBox().querySelectorAll('.sg-row').forEach((r, k) => r.classList.toggle('sel', k === i)); }
+// A folder opens; a file opens its folder with the file selected.
+async function pickSuggest(i) {
+  const it = sugItems[i]; if (!it) return;
+  hideSuggest();
+  searchInput().value = ''; $('#search').classList.remove('has-value');
+  const t = app.tab(); t.filter = ''; if (t.search) cancelSearch(t, false);
+  if (it.d) { navigate(it.p); return; }
+  await navigate(parentOf(it.p), { select: it.p });
+  app.revealInView(it.p);
+  view.root.focus();
+}
+app.suggest = { show: showSuggest, pick: pickSuggest, items: () => sugItems };
+
+async function indexSearch(q, { fromEnter = false } = {}) {
+  const t = app.tab();
+  const under = t.search && t.search.indexed ? t.search.root : t.loc;
+  if (!(isFsPath(under) || under === 'thispc')) return false;
+  const token = ++ixToken;
+  let res;
+  try { res = await api.indexSearch({ q, under: under === 'thispc' ? null : under }); } catch { return false; }
+  if (token !== ixToken || app.tab() !== t) return true;
+  if (!res.indexed) return false;
+  if (!fromEnter && searchInput().value.trim() !== q) return true;
+  t.search = { sid: 'ix' + token, query: q, root: under, items: res.items, running: false, scanned: 0, capped: !!res.capped, indexed: true, ms: res.ms };
+  t.filter = '';
+  computeView(t);
+  view.render({ keepScroll: false });
+  renderBanner(); renderStatusbar();
+  return true;
+}
+
 function onSearchInput() {
   const t = app.tab();
   const v = searchInput().value;
   $('#search').classList.toggle('has-value', !!v);
+  clearTimeout(ixTimer);
+  suggestSoon(v.trim());
+  if (t.search && t.search.indexed && !v.trim()) { ixToken++; cancelSearch(t, false); }
   if (t.search && !t.search.running && v !== t.search.query) cancelSearch(t, false);
   t.filter = t.search ? '' : v;
   computeView(t);
@@ -1469,10 +1546,11 @@ function onSearchInput() {
   renderStatusbar();
 }
 
-function startSearch(q) {
+async function startSearch(q) {
   const t = app.tab();
   q = (q || '').trim();
   if (!q) return;
+  if (await indexSearch(q, { fromEnter: true })) return; // the index covers it: instant
   if (!isFsPath(t.loc) && !(t.search && isFsPath(t.search.root))) { toast('Open a folder or drive to search inside it.', 'warn'); return; }
   const root = t.search ? t.search.root : t.loc;
   if (t.search && t.search.running) api.searchCancel(t.search.sid);
@@ -1879,8 +1957,13 @@ async function boot() {
     b.addEventListener('click', () => ({ back, forward, up, refresh })[b.dataset.cmd]());
   });
   searchInput().addEventListener('input', onSearchInput);
+  searchInput().addEventListener('blur', () => setTimeout(hideSuggest, 120));
   searchInput().addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); startSearch(searchInput().value); }
+    if (e.key === 'ArrowDown' && sugItems.length) { e.preventDefault(); setSugSel(Math.min(sugItems.length - 1, sugSel + 1)); return; }
+    if (e.key === 'ArrowUp' && sugItems.length) { e.preventDefault(); setSugSel(Math.max(-1, sugSel - 1)); return; }
+    if (e.key === 'Enter' && sugSel >= 0) { e.preventDefault(); pickSuggest(sugSel); return; }
+    if (e.key === 'Escape' && sugItems.length) { e.preventDefault(); hideSuggest(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); hideSuggest(); startSearch(searchInput().value); }
     if (e.key === 'Escape') { e.preventDefault(); clearSearch(); view.root.focus(); }
     if (e.key === 'ArrowDown') { e.preventDefault(); view.root.focus(); moveFocus(0, { abs: 0 }); }
   });
@@ -1921,8 +2004,18 @@ async function boot() {
   new ResizeObserver(crumbsResize).observe($('#crumbs'));
   if (new URLSearchParams(location.search).get('qa')) document.documentElement.dataset.qa = '1';
 
+  // A folder changed on disk: re-list it — only in the tab you're looking at (hidden tabs catch up when
+  // shown), and a big folder that keeps changing (a render or download writing into it) at most every few
+  // seconds, so re-listing thousands of files doesn't eat the app.
   api.onChanged((dir) => {
-    for (const t of state.tabs) if (!t.search && t.loc.toLowerCase() === dir.toLowerCase()) load(t, { keep: true });
+    for (const t of state.tabs) {
+      if (t.search || t.loc.toLowerCase() !== dir.toLowerCase()) continue;
+      if (t !== app.tab()) { t.stale = true; continue; }
+      const gap = (t.items || []).length > 3000 ? 3000 : 0, wait = (t.watchAt || 0) + gap - Date.now();
+      clearTimeout(t.watchTimer);
+      const go = () => { t.watchAt = Date.now(); t.watchTimer = 0; load(t, { keep: true }); };
+      if (wait > 0) t.watchTimer = setTimeout(go, wait); else go();
+    }
     sidebar.invalidate(dir);
   });
   api.onSearchBatch(onSearchBatch);

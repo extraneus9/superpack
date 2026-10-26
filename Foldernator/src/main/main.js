@@ -81,20 +81,49 @@ function watchForUpdates() {
 }
 let settings, helper, drive, icons, dragIcon;
 
+// ---------- instant search index (worker thread, see index-worker.js) ----------
+let indexer = null, ixSeq = 0;
+const ixWait = new Map();
+function startIndexer() {
+  const { Worker } = require('worker_threads');
+  indexer = new Worker(path.join(__dirname, 'index-worker.js'), { workerData: { dir: path.join(app.getPath('userData'), 'index') } });
+  indexer.on('message', (m) => {
+    if (m.id && ixWait.has(m.id)) { const w = ixWait.get(m.id); ixWait.delete(m.id); if (m.error) w.rej(new Error(m.error)); else w.res(m.result !== undefined ? m.result : m.ok); }
+    else if (m.event) { log('index', m.event, m.root, m.n, m.ms ? m.ms + 'ms' : ''); send('index:event', m); }
+  });
+  indexer.on('error', (e) => log('index worker error', e.message));
+}
+const ix = (cmd, args = {}) => new Promise((res, rej) => {
+  if (!indexer) return rej(new Error('index not running'));
+  const id = ++ixSeq; ixWait.set(id, { res, rej }); indexer.postMessage({ id, cmd, ...args });
+});
+// What gets indexed: every ready fixed/removable drive except C:, plus the user folder (C:\Users\<you>,
+// without AppData). C:'s system folders stay out — slow to walk, and never what you look for.
+async function indexRoots() {
+  if (process.env.ALVA_QA) return;
+  try {
+    const ds = await helper.call('drives');
+    const roots = ds.filter((d) => d.ready && ['Fixed', 'Removable'].includes(d.type) && !/^c:/i.test(d.path)).map((d) => d.path);
+    roots.push(app.getPath('home'));
+    await ix('roots', { roots });
+  } catch (e) { log('index roots failed', e.message); }
+}
+
 // New devices (USB sticks, SD cards, phones in storage mode, mounted ISOs) show up within ~2 s, with a toast.
+// Phones (portable devices) are a slower shell enumeration on the helper's one queue, which icons wait
+// behind, so they are checked every third tick.
 function watchDevices() {
-  let known = null;
+  let known = null, n = 0, portable = [];
   const tick = async () => {
     try {
       const drivesNow = await helper.call('drives');
-      let portable = [];
-      try { portable = (await helper.call('portable')).map((d) => ({ path: d.path, label: d.name, type: 'Portable', portable: true, ready: true })); } catch {}
+      if (n++ % 3 === 0) try { portable = (await helper.call('portable')).map((d) => ({ path: d.path, label: d.name, type: 'Portable', portable: true, ready: true })); } catch {}
       const list = [...drivesNow, ...portable];
       const now = new Map(list.map((d) => [d.path.toLowerCase(), d]));
       if (known) {
         const added = list.filter((d) => !known.has(d.path.toLowerCase()));
         const removed = [...known.values()].filter((d) => !now.has(d.path.toLowerCase()));
-        if (added.length || removed.length) send('drives:changed', { drives: drivesNow, portable, added, removed });
+        if (added.length || removed.length) { send('drives:changed', { drives: drivesNow, portable, added, removed }); indexRoots(); }
       }
       known = now;
     } catch {}
@@ -341,8 +370,9 @@ function setWatched(dirs) {
         // non-stop (busy loop, and the debounce below would never fire): drop the watcher and reload once so
         // the tab shows "doesn't exist" instead of a stale listing.
         if (file && /^(\\\\\?\\|[a-z]:\\)/i.test(String(file))) { drop(); send('fs:changed', d); return; }
-        clearTimeout(entry.timer);
-        entry.timer = setTimeout(() => send('fs:changed', d), 350);
+        // one refresh 350 ms after the first change, then one per 350 ms while changes keep coming
+        // (resetting the timer on every event meant a folder being written to never refreshed)
+        if (!entry.timer) entry.timer = setTimeout(() => { entry.timer = null; send('fs:changed', d); }, 350);
       });
       entry.watcher.on('error', () => { drop(); send('fs:changed', d); });
       watchers.set(k, entry);
@@ -552,6 +582,10 @@ function registerIpc() {
   });
   h('fs:drives', () => helper.call('drives'));
   h('portable:list', () => helper.call('portable'));
+  h('index:search', (a) => ix('search', a));
+  h('index:status', () => ix('status'));
+  h('index:roots', (roots) => ix('roots', { roots }));
+  h('index:rebuild', () => ix('rebuild'));
   h('shell:explorerOpen', (p) => { spawn(MAC ? '/usr/bin/open' : 'explorer.exe', [p], { detached: true, stdio: 'ignore' }).unref(); return true; });
   h('shell:list', (p) => helper.call('shellList', { path: p }));
   h('shell:invoke', (p) => helper.call('shellInvoke', { path: p }));
@@ -862,6 +896,8 @@ app.whenReady().then(() => {
   registerIpc();
   watchForUpdates();
   watchDevices();
+  if (process.platform === 'win32') startIndexer(); // the index is Windows-path based; the Mac build keeps the classic search
+  setTimeout(indexRoots, 8000); // after startup settles
   log('started, helper:', MAC ? 'mac-helper' : path.basename(defaultExe));
   createWindow(argvPaths(process.argv));
 });
