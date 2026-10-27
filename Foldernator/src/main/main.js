@@ -677,7 +677,8 @@ function registerIpc() {
   }));
   h('search:cancel', (sid) => helper.call('searchCancel', { sid }));
 
-  h('shell:open', (p) => shell.openPath(p));
+  // QA never launches real apps on the desktop: it only records what would have opened
+  h('shell:open', (p) => { if (process.env.ALVA_QA) { (global.qaOpened = global.qaOpened || []).push(p); return ''; } return shell.openPath(p); });
   h('shell:openWith', (p) => helper.call('openWith', { path: p }));
   h('media:details', (p) => mediaInfo.details(String(p)));
   h('shell:properties', (paths) => helper.call('properties', { paths, hwnd: win && !win.isDestroyed() ? Number(win.getNativeWindowHandle().readBigUInt64LE()) : 0 }));

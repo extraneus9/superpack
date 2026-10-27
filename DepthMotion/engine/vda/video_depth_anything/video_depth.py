@@ -115,7 +115,7 @@ class VideoDepthAnything(nn.Module):
                 depth = F.interpolate(depth.flatten(0,1).unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)
             else:
                 depth = depth.flatten(0,1).unsqueeze(1).float()
-            depth_list += [depth[i][0].cpu().numpy() for i in range(depth.shape[0])]
+            depth_list += [depth[i][0].half().cpu().numpy() for i in range(depth.shape[0])]  # DepthMotion: half precision in RAM
 
             pre_input = cur_input
 
@@ -140,27 +140,22 @@ class VideoDepthAnything(nn.Module):
                 if self.metric:
                     scale, shift = 1.0, 0.0
                 else:
-                    scale, shift = compute_scale_and_shift(np.concatenate(curr_align),
-                                                           np.concatenate(ref_align),
+                    scale, shift = compute_scale_and_shift(np.concatenate(curr_align).astype(np.float32),
+                                                           np.concatenate(ref_align).astype(np.float32),
                                                            np.concatenate(np.ones_like(ref_align)==1))
 
                 pre_depth_list = depth_list_aligned[-INTERP_LEN:]
                 post_depth_list = depth_list[frame_id+align_len:frame_id+OVERLAP]
                 for i in range(len(post_depth_list)):
-                    post_depth_list[i] = post_depth_list[i] * scale + shift
-                    post_depth_list[i][post_depth_list[i]<0] = 0
-                depth_list_aligned[-INTERP_LEN:] = get_interpolate_frames(pre_depth_list, post_depth_list)
+                    post_depth_list[i] = np.maximum(post_depth_list[i].astype(np.float32) * scale + shift, 0).astype(np.float16)
+                depth_list_aligned[-INTERP_LEN:] = [np.asarray(x, np.float16) for x in get_interpolate_frames(pre_depth_list, post_depth_list)]
 
                 for i in range(OVERLAP, INFER_LEN):
-                    new_depth = depth_list[frame_id+i] * scale + shift
-                    new_depth[new_depth<0] = 0
-                    depth_list_aligned.append(new_depth)
+                    depth_list_aligned.append(np.maximum(depth_list[frame_id+i].astype(np.float32) * scale + shift, 0).astype(np.float16))
 
                 ref_align = ref_align[:1]
                 for kf_id in kf_align_list[1:]:
-                    new_depth = depth_list[frame_id+kf_id] * scale + shift
-                    new_depth[new_depth<0] = 0
-                    ref_align.append(new_depth)
+                    ref_align.append(np.maximum(depth_list[frame_id+kf_id].astype(np.float32) * scale + shift, 0).astype(np.float16))
 
         depth_list = depth_list_aligned
 

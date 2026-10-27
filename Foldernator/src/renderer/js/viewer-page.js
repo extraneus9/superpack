@@ -4,6 +4,7 @@
 // the file), copy, delete, info, wallpaper. Dragging the picture (when it fits the window) drags the FILE out
 // to any app or folder, like dragging it from Explorer.
 import { fileUrl, fmtSize, fmtDate } from './util.js';
+import { isViewable } from './viewer.js';
 
 const api = window.api;
 const $ = (s) => document.querySelector(s);
@@ -71,7 +72,12 @@ function go(d) { const n = i + d; if (n < 0 || n >= list.length) return; i = n; 
 
 function load(data) {
   if (!data || !data.list || !data.list.length) return;
-  list = data.list;
+  // Only images belong here: anything else (a video or song sent by an older Foldernator window) goes to its
+  // default app — the player — instead of showing a still thumbnail.
+  const first = data.list[Math.max(0, Math.min(data.index || 0, data.list.length - 1))];
+  if (first && !isViewable({ n: first.n })) { api.open(first.p); window.close(); return; }
+  list = data.list.filter((it) => isViewable({ n: it.n }));
+  data = { index: Math.max(0, list.findIndex((it) => it.p === first.p)) };
   i = Math.max(0, Math.min(data.index || 0, list.length - 1));
   show();
 }

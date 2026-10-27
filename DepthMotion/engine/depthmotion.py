@@ -222,7 +222,8 @@ def clean_edges(d, lab):
         base = np.where(person > 0, behind, out).astype(np.float32)
         t = max(5, w // 90)
         opened = cv2.morphologyEx(base, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * t + 1, 2 * t + 1)))
-        out = np.where(around, np.minimum(out, opened), out)
+        loose = around & (out - opened > 0.025)  # clearly nearer than what's around it: a strand, not wall texture
+        out = np.where(loose, opened, out)
     return out.astype(np.float32)
 
 
@@ -246,13 +247,21 @@ def normals(d, relief=2.5, lab=None):
         gx[edge] *= 0.2; gy[edge] *= 0.2
     else:
         z = np.empty_like(d); gx = np.empty_like(d); gy = np.empty_like(d)
+        r = max(3, d.shape[1] // 200)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
         for v in np.unique(lab):
             m = lab == v
-            core = cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32)  # skip the outline row
-            if core.sum() < 20:
-                core = m.astype(np.float32)
-            zr = cv2.GaussianBlur(d * core, (0, 0), 3.0) / np.maximum(cv2.GaussianBlur(core, (0, 0), 3.0), 1e-4)
+            mf = m.astype(np.float32)
+            zr = cv2.GaussianBlur(d * mf, (0, 0), 3.0) / np.maximum(cv2.GaussianBlur(mf, (0, 0), 3.0), 1e-4)
             ry, rx = np.gradient(zr * max(d.shape) * relief)
+            # near the outline the depth is a blend (or a refill): carry the inside's surface slope out to the edge,
+            # so the body shades the same right up to its outline — no dark rim, no flat light rim
+            core = cv2.erode(m.astype(np.uint8), k).astype(np.float32)
+            if core.sum() > 20:
+                den = np.maximum(cv2.GaussianBlur(core, (0, 0), r), 1e-4)
+                edge = m & (core == 0)
+                rx[edge] = (cv2.GaussianBlur(rx * core, (0, 0), r) / den)[edge]
+                ry[edge] = (cv2.GaussianBlur(ry * core, (0, 0), r) / den)[edge]
             z[m] = zr[m]; gx[m] = rx[m]; gy[m] = ry[m]
     gx, gy = np.clip(gx, -2.5, 2.5), np.clip(gy, -2.5, 2.5)
     n = np.dstack([-gx, -gy, np.ones_like(z)])
