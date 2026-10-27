@@ -86,6 +86,70 @@ def place_on_floor(people_joints, focal, width, height, feet_ids=(15, 16, 17, 18
     return out, up, -h * up
 
 
+def solve_floor_moving(people_joints, focal, R, C, feet_ids=(15, 16, 17, 18, 19, 20, 21, 22), stance=1.5):
+    """Moving camera: the ONE floor (height under the first frame's camera + tilt, no roll) that, across ALL frames,
+    puts everyone's feet down AND makes them a believable size. → (up, camera height)."""
+    rays, z_size, tall = [], [], []
+    for j in people_joints:
+        f = j[:, list(feet_ids)]
+        low = np.argmax(f[:, :, 1] / f[:, :, 2], axis=1)
+        p = f[np.arange(len(f)), low]
+        rays.append(np.einsum("tij,tj->ti", R, p / p[:, 2:3]))
+        z_size.append(p[:, 2])
+        tall.append(np.linalg.norm((j[:, 15] + j[:, 16]) / 2 - j[:, 0], axis=1))
+    best = (np.inf, 1.5, 0.0)
+    for phi in np.radians(np.arange(-30, 50.1, 0.5)):
+        up = np.array([0.0, -np.cos(phi), -np.sin(phi)])
+        for hc in np.arange(0.2, 8.0, 0.05):
+            err = 0.3 * phi ** 2
+            for dw, zs, ht in zip(rays, z_size, tall):
+                den = dw @ up
+                k = np.where(den < -1e-4, (-hc - C @ up) / np.minimum(den, -1e-4), np.nan) / zs
+                ok = np.isfinite(k) & (k > 0)
+                if ok.mean() < 0.8:
+                    err = np.inf; break
+                err += np.log(np.median(ht[ok] * k[ok]) / stance) ** 2
+            if err < best[0]:
+                best = (err, hc, phi)
+    _, hc, phi = best
+    return np.array([0.0, -np.cos(phi), -np.sin(phi)]), float(hc)
+
+
+def plant(people_joints, focal, up, cam_h, R, C, feet_ids=(15, 16, 17, 18, 19, 20, 21, 22)):
+    """Moving camera: every frame, slide each person along that frame's line of sight until their lowest foot
+    touches the ONE floor (found on the first frames). people_joints: [T, J, 3] in each frame's camera space.
+    R, C: camera → world per frame (world = first frame's camera space). → joints in world, per person."""
+    out = []
+    for j in people_joints:
+        f = j[:, list(feet_ids)]
+        low = np.argmax(f[:, :, 1] / f[:, :, 2], axis=1)
+        p = f[np.arange(len(f)), low]                                   # lowest foot on screen, camera space
+        d = p / p[:, 2:3]                                               # its viewing ray (z = 1)
+        dw = np.einsum("tij,tj->ti", R, d)                              # the ray in world
+        tt = (-cam_h - C @ up) / np.where(np.abs(dw @ up) > 1e-4, dw @ up, -1e-4)
+        k = tt / p[:, 2]
+        k = np.where(np.isfinite(k) & (k > 0) & (k < 10), k, np.nan)
+        k = np.where(np.isnan(k), np.nanmedian(k), k)
+        r = 3
+        k = np.convolve(np.pad(k, r, mode="edge"), np.ones(2 * r + 1) / (2 * r + 1), "valid")
+        cam_pts = j * k[:, None, None]
+        out.append(np.einsum("tij,tkj->tki", R, cam_pts) + C[:, None, :])
+    return out
+
+
+def depth_scale(disp, labels, people_z, ids=None):
+    """1/z = a·disp + b from the people on one frame (their distances are known) → (a, b). ids: their label values."""
+    ids = ids or [i + 1 for i in range(len(people_z))]
+    pd = np.array([np.median(disp[labels == k]) for k in ids])
+    pz = np.asarray(people_z, float)
+    if len(pd) >= 2 and np.ptp(pd) > 0.02:
+        a, b = np.linalg.lstsq(np.stack([pd, np.ones_like(pd)], 1), 1 / pz, rcond=None)[0]
+    else:
+        b = 1 / 25.0
+        a = (1 / pz[0] - b) / max(pd[0], 1e-3)
+    return float(a), float(b)
+
+
 def world_basis(up, floor_pt):
     """Rotation + origin that turn camera-space points into a Z-up world with the floor at z = 0 under the camera."""
     fwd = np.array([0.0, 0.0, 1.0])
@@ -116,9 +180,15 @@ def write_pc2(path, frames):
         f.write(np.ascontiguousarray(frames, "<f4").tobytes())
 
 
-def relief(disp, mask, people_z, people_disp, focal, R, origin, step=6):
+def relief(disp, mask, people_z, people_disp, focal, R, origin, step=4, far=None):
     """The set as clay: the clip's relative depth turned metric by matching the people (whose distance we know)."""
+    import cv2
     h, w = disp.shape
+    # the set behind the people: paint over where they stood (no person-shaped holes), then calm the noise
+    grow = cv2.dilate(mask.astype(np.uint8), np.ones((25, 25), np.uint8))
+    disp = cv2.inpaint((disp * 65535).astype(np.uint16), grow, 12, cv2.INPAINT_TELEA).astype(np.float32) / 65535
+    disp = cv2.bilateralFilter(disp, 9, 0.04, 9)
+    mask = np.zeros_like(mask)
     A = np.stack([people_disp, np.ones_like(people_disp)], 1)
     if len(people_disp) >= 2 and np.ptp(people_disp) > 0.02:
         a, b = np.linalg.lstsq(A, 1 / np.asarray(people_z), rcond=None)[0]
@@ -135,6 +205,7 @@ def relief(disp, mask, people_z, people_disp, focal, R, origin, step=6):
     a_, b_, c_, d_ = idx[:-1, :-1], idx[:-1, 1:], idx[1:, :-1], idx[1:, 1:]
     zz = np.stack([z[:-1, :-1], z[:-1, 1:], z[1:, :-1], z[1:, 1:]])
     ok = zz.max(0) / zz.min(0) < 1.25  # no rubber sheets across depth cliffs
+    ok &= zz.max(0) < far  # the far stands and sky become open space, like a set's backdrop
     ok &= ~(hole[:-1, :-1] | hole[:-1, 1:] | hole[1:, :-1] | hole[1:, 1:])  # the people are their own meshes
     faces = np.concatenate([np.stack([a_, c_, b_], -1)[ok], np.stack([b_, c_, d_], -1)[ok]])
     used = np.unique(faces)
@@ -142,7 +213,7 @@ def relief(disp, mask, people_z, people_disp, focal, R, origin, step=6):
     return to_world(pts.reshape(-1, 3)[used], R, origin), remap[faces]
 
 
-def build(out, people, faces, focal, width, height, fps, disp=None, labels=None, feet=None, floor=None):
+def build(out, people, faces, focal, width, height, fps, disp=None, labels=None, feet=None, floor=None, cam_track=None):
     """people: [{"name", "color", "verts": [T, V, 3] camera space}] → scene folder. Returns the scene.json path."""
     os.makedirs(out, exist_ok=True)
     verts = [p["verts"] for p in people]
@@ -153,15 +224,32 @@ def build(out, people, faces, focal, width, height, fps, disp=None, labels=None,
     cam[:3, 1] = R @ np.array([0, -1.0, 0])     # camera up
     cam[:3, 2] = R @ np.array([0, 0, -1.0])     # camera looks down its −Z
     cam[:3, 3] = to_world(np.zeros(3), R, origin)
+    if cam_track is not None:  # a moving camera: one matrix per frame, same axes rule as above
+        Rt, Ct = cam_track
+        track = []
+        for Rk, Ck in zip(Rt, Ct):
+            m = np.eye(4)
+            m[:3, 0] = R @ (Rk @ np.array([1.0, 0, 0])); m[:3, 1] = R @ (Rk @ np.array([0, -1.0, 0]))
+            m[:3, 2] = R @ (Rk @ np.array([0, 0, -1.0])); m[:3, 3] = to_world(Ck, R, origin)
+            track.append(m.tolist())
+        cam = np.array(track[0])
     S = {"fps": float(fps), "frames": int(len(verts[0])), "width": int(width), "height": int(height),
          "lens_mm": float(focal * 36.0 / width), "camera_matrix": cam.tolist(), "people": [],
          "camera_height_m": float(cam[2, 3])}
+    if cam_track is not None:
+        S["camera_track"] = track
     for i, p in enumerate(people):
         wv = to_world(p["verts"].reshape(-1, 3), R, origin).reshape(p["verts"].shape).astype(np.float32)
         write_obj(os.path.join(out, f"person_{i + 1}.obj"), wv[0], faces)
         write_pc2(os.path.join(out, f"person_{i + 1}.pc2"), wv)
-        S["people"].append({"name": p.get("name") or f"PERSON_{i + 1}", "color": p["color"],
-                            "obj": f"person_{i + 1}.obj", "pc2": f"person_{i + 1}.pc2"})
+        entry = {"name": p.get("name") or f"PERSON_{i + 1}", "color": p["color"],
+                 "obj": f"person_{i + 1}.obj", "pc2": f"person_{i + 1}.pc2"}
+        if p.get("joints") is not None:  # → a real human body in Blender (falls back to the block mannequin)
+            wj = to_world(p["joints"].reshape(-1, 3), R, origin).reshape(p["joints"].shape).astype(np.float32)
+            np.save(os.path.join(out, f"person_{i + 1}_joints.npy"), wj)
+            entry["joints"] = f"person_{i + 1}_joints.npy"
+            entry["leg_m"] = float(np.median(np.linalg.norm(wj[:, 11] - wj[:, 13], axis=1) + np.linalg.norm(wj[:, 13] - wj[:, 15], axis=1)))
+        S["people"].append(entry)
     if disp is not None and labels is not None:
         pz, pd = [], []
         for i, p in enumerate(people):
@@ -170,7 +258,8 @@ def build(out, people, faces, focal, width, height, fps, disp=None, labels=None,
                 pz.append(float(np.median(p["verts"][0][:, 2])))
                 pd.append(float(np.median(disp[m])))
         if pz:
-            sv, sf = relief(disp, labels > 0, np.array(pz), np.array(pd), focal * disp.shape[1] / width, R, origin)
+            sv, sf = relief(disp, labels > 0, np.array(pz), np.array(pd), focal * disp.shape[1] / width, R, origin,
+                            far=3.5 * max(pz))
             write_obj(os.path.join(out, "set.obj"), sv, sf)
             S["set_obj"] = "set.obj"
     path = os.path.join(out, "scene.json")

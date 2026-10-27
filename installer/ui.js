@@ -28,7 +28,7 @@ const app = (k) => M.apps.find((a) => a.key === k);
       <img class="ic" src="assets/icons/${a.key}.png" alt="">
       <div>${single() ? '' : `<div class="nm">${ogg(`n-${a.key}`)}</div>`}
         <div class="ds">${esc(a.desc)}</div>
-        <div class="sz">${a.size}${a.extra ? ` · ${esc(a.extra)}` : ''}<span class="more-wrap"> · <span class="more" data-k="${a.key}">More info</span></span></div></div>
+        <div class="sz">${a.size}${a.extra ? `<span class="long"> · ${esc(a.extra)}</span><span class="short"> ${esc(a.short || a.extra)}</span>` : ''}<span class="more-wrap"> · <span class="more" data-k="${a.key}">More info</span></span></div></div>
       <span class="fill"></span>
       <span class="open" data-exe="${esc(a.exe)}">Open</span>
     </button>`).join('');
@@ -314,6 +314,10 @@ async function demo() {
   if (!single() && M.apps.some((a) => a.key === 'framehud')) {
     closeSheet(); S.picked.add('framehud'); paintFooter(); await wait(500); await window.setup.shot('1d-pick-framehud');
     openSheet('framehud'); await wait(800); await window.setup.shot('1e-more-framehud');
+  }
+  if (!single() && M.apps.some((a) => a.key === 'depthmotion')) {
+    closeSheet(); S.picked.add('depthmotion'); paintFooter(); await wait(500); await window.setup.shot('1f-pick-depthmotion');
+    openSheet('depthmotion'); await wait(800); await window.setup.shot('1g-more-depthmotion');
   }
   closeSheet(); await wait(500);
   install();

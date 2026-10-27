@@ -162,7 +162,11 @@ body.many .tile .open { right: 12px; bottom: 12px; padding: 6px 14px; }
 
 /* seven apps and up (DepthMotion joined 2026-10-26): three columns keep the grid at three rows above the switches */
 body.lots main { grid-template-columns: 1fr 1fr 1fr; }
-body.lots .tile { padding: 12px 14px; grid-template-columns: 44px 1fr; gap: 12px; }
+body.lots .tile { padding: 10px 14px; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; }
 body.lots .tile img.ic { width: 44px; height: 44px; border-radius: 11px; }
 body.lots .tile .nm .ogg { --fs: 18px; }
-body.lots .tile .sz { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 4px; }
+/* narrow tiles: the whole description shows on two lines instead of being cut mid-word */
+body.lots .tile .ds { white-space: normal; font-size: 11.5px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+body.lots .tile .sz { font-size: 11px; margin-top: 2px; white-space: nowrap; }
+body.lots .tile .sz .long { display: none; }
+body:not(.lots) .tile .sz .short { display: none; }

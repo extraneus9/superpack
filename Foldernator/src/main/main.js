@@ -185,16 +185,20 @@ function makeDragIcon() {
 function isDriveRoot(p) { return MAC ? p === '/' || /^\/Volumes\/[^/]+\/?$/.test(p) : /^[a-z]:\\?$/i.test(p); }
 
 // ---------- floating image viewer ----------
-// Its own window (move it to another monitor, keep it beside the folder). Reused while open.
-let viewerWin = null, viewerData = null;
+// Its own window (move it to another monitor, keep it beside the folder). Every image opens a new one, like
+// Photos — opening an image that already has a window just brings that window forward.
+const viewers = new Map(); // webContents id -> { win, data }
 function openViewerWindow(data) {
-  viewerData = data;
-  if (viewerWin && !viewerWin.isDestroyed()) { viewerWin.webContents.send('viewer:load', data); viewerWin.show(); viewerWin.focus(); return; }
+  const want = data.list[data.index] && data.list[data.index].p;
+  for (const v of viewers.values()) {
+    if (!v.win.isDestroyed() && v.current === want) { if (v.win.isMinimized()) v.win.restore(); v.win.show(); v.win.focus(); return; }
+  }
   const disp = screen.getDisplayMatching(win ? win.getBounds() : { x: 0, y: 0, width: 1, height: 1 });
   const wa = disp.workArea;
   const w = Math.round(wa.width * 0.62), h = Math.round(wa.height * 0.82);
-  viewerWin = new BrowserWindow({
-    width: w, height: h, x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2),
+  const step = 28 * (viewers.size % 6); // each new window a little down-right of the last, so none hides another
+  const viewerWin = new BrowserWindow({
+    width: w, height: h, x: Math.round(wa.x + (wa.width - w) / 2) + step, y: Math.round(wa.y + (wa.height - h) / 2) + step,
     minWidth: 320, minHeight: 240, show: false, title: 'Foldernator viewer',
     icon: path.join(__dirname, '..', '..', 'assets', 'app-v3.ico'),
     backgroundColor: '#0b0b0b', titleBarStyle: 'hidden',
@@ -204,7 +208,9 @@ function openViewerWindow(data) {
   viewerWin.setMenu(null);
   viewerWin.loadFile(path.join(__dirname, '..', 'renderer', 'viewer.html'));
   viewerWin.once('ready-to-show', () => { if (process.env.ALVA_QA) viewerWin.showInactive(); else viewerWin.show(); });
-  viewerWin.on('closed', () => { viewerWin = null; });
+  const id = viewerWin.webContents.id;
+  viewers.set(id, { win: viewerWin, data, current: want });
+  viewerWin.on('closed', () => viewers.delete(id));
 }
 
 // ---------- window ----------
@@ -260,7 +266,7 @@ function createWindow(startPaths = []) {
   win.on('resize', saveBounds);
   win.on('move', saveBounds);
   win.on('close', () => { saveBounds(); settings.flush(); });
-  win.on('closed', () => { win = null; if (viewerWin && !viewerWin.isDestroyed()) viewerWin.close(); });
+  win.on('closed', () => { win = null; for (const v of viewers.values()) if (!v.win.isDestroyed()) v.win.close(); });
   const sendGlass = () => { if (liveGlass && win && !win.isDestroyed()) send('glass:bounds', glassInfo()); };
   for (const ev of ['move', 'resize', 'maximize', 'unmaximize', 'restore', 'moved']) win.on(ev, sendGlass);
   win.on('swipe', (e, dir) => { if (dir === 'right') send('nav', 'back'); if (dir === 'left') send('nav', 'forward'); });
@@ -478,7 +484,7 @@ function registerIpc() {
 
   h('fs:peekReset', () => { peekGen++; });
   h('viewer:open', (data) => { openViewerWindow(data); return true; });
-  h('viewer:data', () => viewerData);
+  ipcMain.handle('viewer:data', (e) => (viewers.get(e.sender.id) || {}).data || null);
   h('image:rotate', ({ path: p, op }) => helper.call('imageRotate', { path: p, op }));
   h('image:crop', ({ path: p, x, y, w, h: hh }) => helper.call('imageCrop', { path: p, x, y, w, h: hh }));
   h('image:wallpaper', (p) => helper.call('setWallpaper', { path: p }));
@@ -532,8 +538,8 @@ function registerIpc() {
     return out;
   });
   h('image:copy', (p) => { const img = nativeImage.createFromPath(p); if (img.isEmpty()) throw new Error('Can’t read this image'); clipboard.writeImage(img); return true; });
-  h('viewer:close', () => { if (viewerWin && !viewerWin.isDestroyed()) viewerWin.close(); });
-  ipcMain.on('viewer:shown', (e, p) => send('viewer:shown', p));
+  ipcMain.handle('viewer:close', (e) => { const v = viewers.get(e.sender.id); if (v && !v.win.isDestroyed()) v.win.close(); });
+  ipcMain.on('viewer:shown', (e, p) => { const v = viewers.get(e.sender.id); if (v) v.current = p; send('viewer:shown', p); });
   ipcMain.on('log', (e, ...parts) => log('[ui]', ...parts));
   h('fs:peek', async (dirs) => {
     const out = {};

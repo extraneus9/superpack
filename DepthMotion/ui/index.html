@@ -11,10 +11,28 @@
 <header>
   <img id="title" src="assets/title.png" alt="DepthMotion.">
   <p class="lede">Real footage in. Pure motion out.</p>
+  <div id="mem" class="chip memchip" title="Free memory right now">
+    <span class="lbl">RAM</span><span class="gauge"><i id="ramBar"></i><b id="ramRes"></b></span><span id="ramTxt">–</span>
+    <span class="lbl">VRAM</span><span class="gauge"><i id="vramBar"></i></span><span id="vramTxt">–</span>
+  </div>
   <div id="gpu" class="chip"><i></i><span>Checking your graphics card…</span></div>
 </header>
 
+<nav id="lib" class="tile">
+  <div class="libhead"><h3>Library</h3><button id="newFolder" title="New folder in the selected folder">+ Folder</button></div>
+  <div id="libTree"></div>
+  <div class="libfoot">
+    <span>Saving to <b id="destName">Library</b></span>
+    <button id="openLib" class="ghostbtn">Open in Foldernator</button>
+  </div>
+</nav>
+<div id="menu" hidden></div>
+
 <aside>
+  <div class="seg mode" id="mode">
+    <button data-v="extract" class="on">Extract motion<small>Depth, clay, people</small></button>
+    <button data-v="location">New location<small>Same motion, new set</small></button>
+  </div>
   <!-- source -->
   <section class="tile" id="source">
     <label id="drop">
@@ -35,6 +53,19 @@
     </div>
   </section>
 
+  <section class="group only-location">
+    <h3>Location</h3>
+    <div class="styles" id="style">
+      <button data-v="ruins" class="on"><img src="assets/loc-ruins.jpg" alt=""><b>Ruins</b></button>
+      <button data-v="studio"><img src="assets/loc-studio.jpg" alt=""><b>Studio</b></button>
+      <button data-v="street"><img src="assets/loc-street.jpg" alt=""><b>Street</b></button>
+    </div>
+    <div class="locrow"><span>Layout <b id="seedVal">#7</b></span><button id="shuffle" class="ghostbtn">Shuffle</button></div>
+    <h3 class="sunh">Sun <output id="sunVal">Golden hour</output></h3>
+    <input type="range" id="sun" min="5" max="60" value="18">
+    <p class="hint" id="blenderHint" hidden>Needs Blender (free, blender.org) installed on this PC.</p>
+  </section>
+
   <section class="group">
     <h3>Quality</h3>
     <div class="seg" id="quality">
@@ -43,7 +74,7 @@
     </div>
   </section>
 
-  <section class="group">
+  <section class="group only-extract">
     <h3>Passes</h3>
     <div class="passes" id="passes">
       <button data-v="clay" class="on"><b>Clay</b><small>Seedance 2.5 blockout</small></button>
@@ -69,21 +100,28 @@
 
   <section class="group">
     <h3>People</h3>
-    <label class="switch"><input type="checkbox" id="pplOn"><i></i>Colour each person — so the model knows who is who</label>
+    <label class="switch"><input type="checkbox" id="pplOn"><i></i>Colour the people — you pick who gets which colour</label>
     <div id="ppl" hidden>
       <div id="pplFrame"><img id="pplImg" alt=""><svg id="pplBoxes"></svg><span id="pplMsg"></span></div>
+      <p class="hint" id="pplHint"></p>
       <div id="pplChips"></div>
       <label class="switch"><input type="checkbox" id="onlyPeople"><i></i>Only the people — black out everything else</label>
     </div>
   </section>
 
-  <section class="group">
+  <section class="group only-extract">
     <h3>Isolate subjects <output id="isoVal">Off</output></h3>
     <input type="range" id="iso" min="0" max="90" value="0">
     <p class="hint">Blacks out everything behind the subjects, so the model copies the bodies, not the set.</p>
     <label class="switch"><input type="checkbox" id="invert"><i></i>Invert — near is black</label>
   </section>
 
+  <section id="pre" class="tile" hidden>
+    <div class="prehead"><b id="preVerdict">Checking memory…</b><span id="preNums"></span></div>
+    <div class="prebar"><i id="preNeed"></i><b id="preRoom"></b></div>
+    <p id="preNote"></p>
+    <div id="preTips" hidden><span>To free memory, close:</span><ul id="preList"></ul></div>
+  </section>
   <button id="go" disabled>Extract motion</button>
 </aside>
 
@@ -104,6 +142,8 @@
     <div class="actions">
       <button id="openFolder">Open folder</button>
       <button id="copySeed" class="ghostbtn">Copy Seedance 2.5 line</button>
+      <button id="openBlend" class="ghostbtn" hidden>Open in Blender</button>
+      <button id="remerge" class="ghostbtn" hidden title="After editing the set in Blender and saving it">Re-merge</button>
       <span id="saved"></span>
     </div>
   </div>

@@ -7,3 +7,4 @@ easydict
 tqdm
 imageio-ffmpeg
 sam2
+OpenEXR

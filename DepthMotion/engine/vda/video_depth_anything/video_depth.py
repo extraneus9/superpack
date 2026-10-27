@@ -67,7 +67,9 @@ class VideoDepthAnything(nn.Module):
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
 
-    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', fp32=False):
+    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', fp32=False, keep_size=True):
+        # DepthMotion: keep_size=False returns depth at the model's own resolution (~518 px) instead of the frame size,
+        # a fraction of the RAM for a long clip — the caller upsamples one frame at a time when it writes
         frame_height, frame_width = frames[0].shape[:2]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
         if ratio > 1.78:  # we recommend to process video with ratio smaller than 16:9 due to memory limitation
@@ -109,7 +111,10 @@ class VideoDepthAnything(nn.Module):
                     depth = self.forward(cur_input) # depth shape: [1, T, H, W]
 
             depth = depth.to(cur_input.dtype)
-            depth = F.interpolate(depth.flatten(0,1).unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)
+            if keep_size:
+                depth = F.interpolate(depth.flatten(0,1).unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)
+            else:
+                depth = depth.flatten(0,1).unsqueeze(1).float()
             depth_list += [depth[i][0].cpu().numpy() for i in range(depth.shape[0])]
 
             pre_input = cur_input

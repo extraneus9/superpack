@@ -33,7 +33,22 @@ static class DepthMotion
         if (!HasNvidia() && MessageBox.Show("DepthMotion needs an NVIDIA graphics card, and none was found on this PC.\n\nOpen it anyway?",
                 "DepthMotion", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return 1;
         if (!File.Exists(Ready) && !SetupWindow()) return 1;
+        CatchUp();
         return Open() ? 0 : 1;
+    }
+
+    // an update that needs a new Python package installs just that, quietly, the next time the app opens
+    static readonly string Installed = Path.Combine(Runtime, "requirements.installed");
+    static void CatchUp()
+    {
+        string want = File.ReadAllText(Path.Combine(App, "requirements.txt"));
+        if (File.Exists(Installed) && File.ReadAllText(Installed) == want) return;
+        try
+        {
+            Run(Path.Combine(App, "uv.exe"), "pip install --python \"" + Py + "\" -r \"" + Path.Combine(App, "requirements.txt") + "\"");
+            File.WriteAllText(Installed, want);
+        }
+        catch (Exception e) { Append("catch-up failed: " + e.Message); }
     }
 
     // ---------- first-run setup ----------
@@ -55,6 +70,7 @@ static class DepthMotion
             Run(Py, "\"" + Path.Combine(App, "engine", "depthmotion.py") + "\" --prefetch vits");
             try { Directory.Delete(Path.Combine(Home, "cache"), true); } catch { }
             File.WriteAllText(Ready, DateTime.Now.ToString("s"));
+            File.WriteAllText(Installed, File.ReadAllText(Path.Combine(App, "requirements.txt")));
             say("Ready", 100);
             return true;
         }
@@ -116,7 +132,21 @@ static class DepthMotion
     {
         string portFile = Path.Combine(Home, "port");
         int port = 0;
-        if (File.Exists(portFile) && int.TryParse(File.ReadAllText(portFile).Trim(), out port) && Alive(port)) { Window(port); return true; }
+        if (File.Exists(portFile) && int.TryParse(File.ReadAllText(portFile).Trim(), out port) && Alive(port))
+        {
+            // an engine is already running: reuse it — unless it's from an older build (then ask it to step aside)
+            string buildFile = Path.Combine(App, "engine", "BUILD");
+            string build = File.Exists(buildFile) ? File.ReadAllText(buildFile).Trim() : "";
+            if (build == "" || State(port).Contains("\"build\": \"" + build + "\"")) { Window(port); return true; }
+            try { using (var c = new WebClient()) c.UploadString("http://127.0.0.1:" + port + "/api/quit", "{}"); }
+            catch (WebException e)
+            {
+                var r = e.Response as HttpWebResponse;
+                if (r != null && (int)r.StatusCode == 409) { Window(port); return true; }  // busy rendering: keep it
+                // an engine too old to step aside: start the new one beside it (the old one quits once its window is gone)
+            }
+            for (int i = 0; i < 50 && Alive(port); i++) Thread.Sleep(100);
+        }
         port = FreePort();
         var psi = new ProcessStartInfo(File.Exists(PyW) ? PyW : Py, "server.py " + port) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.Combine(App, "engine") };
         psi.EnvironmentVariables["DEPTHMOTION_HOME"] = Home;
@@ -134,7 +164,7 @@ static class DepthMotion
         string edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe");
         if (!File.Exists(edge)) edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe");
         if (File.Exists(edge))
-            Process.Start(edge, "--app=" + url + " --window-size=1320,880 --user-data-dir=\"" + Path.Combine(Home, "window") + "\" --no-first-run --disable-features=Translate");
+            Process.Start(edge, "--app=" + url + " --window-size=1500,920 --user-data-dir=\"" + Path.Combine(Home, "window") + "\" --no-first-run --disable-features=Translate");
         else
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
@@ -145,9 +175,10 @@ static class DepthMotion
         return File.Exists(smi) || File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"));
     }
     static int FreePort() { var l = new TcpListener(IPAddress.Loopback, 0); l.Start(); int p = ((IPEndPoint)l.LocalEndpoint).Port; l.Stop(); return p; }
-    static bool Alive(int port)
+    static bool Alive(int port) { return State(port) != ""; }
+    static string State(int port)
     {
-        try { using (var c = new WebClient()) { c.DownloadString("http://127.0.0.1:" + port + "/api/state"); return true; } }
-        catch { return false; }
+        try { using (var c = new WebClient()) return c.DownloadString("http://127.0.0.1:" + port + "/api/state"); }
+        catch { return ""; }
     }
 }

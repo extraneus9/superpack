@@ -68,6 +68,11 @@
     .markbar .save { background: var(--accent); font-weight: 600; padding: 0 14px; }
     .markbar .save:hover { background: #ff2a22; }
     .markbar .msep { width: 1px; height: 20px; background: rgba(255,255,255,.12); margin: 0 5px; }
+    /* video mode: the player fills the stage; image-only tools step aside */
+    .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; outline: none; }
+    body.video .stage video { display: block; }
+    body.video .stage img, body.video .tools [data-act]:not([data-act="delete"]):not([data-act="info"]):not([data-act="more"]), body.video .tools > .sep, body.video .menu [data-act="wallpaper"] { display: none; }
+    body.video .nav { top: 40%; }
     svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   </style>
 </head>
@@ -76,6 +81,7 @@
     <div class="bar"><div class="name"></div><div class="count"></div></div>
     <div class="stage">
       <img alt="" draggable="false">
+      <video controls preload="auto"></video>
       <canvas class="mk"></canvas><canvas class="mk2"></canvas><div class="mkrect"></div>
       <button class="nav prev" title="Previous (←)"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button>
       <button class="nav next" title="Next (→)"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>

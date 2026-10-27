@@ -22,6 +22,7 @@ import time
 import urllib.request
 import warnings
 
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")  # before torch loads: no fragmented VRAM
 import cv2
 import numpy as np
 
@@ -86,10 +87,13 @@ def load_model(encoder="vitl", say=None):
         if not torch.cuda.is_available():
             raise RuntimeError("DepthMotion needs an NVIDIA graphics card (CUDA was not found).")
         fetch_weights(encoder, say)
-        m = VideoDepthAnything(**MODEL_CONFIGS[encoder])
-        m.load_state_dict(torch.load(weights_path(encoder), map_location="cpu"), strict=True)
-        _models.clear()  # one model in VRAM at a time
-        _models[encoder] = m.to("cuda").eval()
+        _models.clear(); torch.cuda.empty_cache()  # one model in VRAM at a time
+        with torch.device("cuda"):  # built and loaded on the card: the weights never stop in RAM
+            m = VideoDepthAnything(**MODEL_CONFIGS[encoder])
+        sd = torch.load(weights_path(encoder), map_location="cuda", weights_only=True, mmap=True)  # read off disk, not into RAM
+        m.load_state_dict(sd, strict=True)
+        del sd
+        _models[encoder] = m.eval()
     return _models[encoder]
 
 
@@ -104,8 +108,13 @@ def probe(path):
     return {"w": w, "h": h, "fps": fps, "dur": n / fps if n > 0 else 0.0}
 
 
+WORK = os.path.join(HOME, "work")  # frames live here during a job, not in RAM
+
+
 def read_frames(path, start=0.0, end=None, max_res=1280):
-    """Decode [start, end) with ffmpeg, scaled so the long side <= max_res (even dims)."""
+    """Decode [start, end) with ffmpeg, scaled so the long side <= max_res (even dims).
+    The frames go into a scratch file on disk (a memory-mapped array): Windows pages them in as they're used and gives
+    that memory straight back to other apps when they need it — a long clip doesn't sit in RAM."""
     info = probe(path)
     scale = min(1.0, max_res / max(info["w"], info["h"]))
     w = int(round(info["w"] * scale / 2) * 2)
@@ -114,18 +123,48 @@ def read_frames(path, start=0.0, end=None, max_res=1280):
     if end:
         cmd += ["-to", str(end)]
     cmd += ["-i", path, "-vf", f"scale={w}:{h}:flags=lanczos", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-    raw = subprocess.run(cmd, capture_output=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-    frames = np.frombuffer(raw, np.uint8).reshape(-1, h, w, 3)
-    if len(frames) == 0:
+    span = ((end or info["dur"]) - (start or 0)) or info["dur"]
+    cap = int(span * info["fps"] * 1.1) + 16  # room for variable frame rates
+    os.makedirs(WORK, exist_ok=True)
+    scratch = os.path.join(WORK, f"frames_{os.getpid()}_{time.time_ns()}.rgb")
+    mm = np.memmap(scratch, np.uint8, "w+", shape=(cap, h, w, 3))
+    size, n = h * w * 3, 0
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    while n < cap:
+        buf = p.stdout.read(size)
+        if len(buf) < size:
+            break
+        mm[n] = np.frombuffer(buf, np.uint8).reshape(h, w, 3); n += 1
+    p.stdout.close(); p.wait()
+    mm.flush()
+    if n == 0:
         raise ValueError("No frames in that range — check the in and out points.")
-    return frames, info["fps"]
+    return mm[:n], info["fps"]
 
 
-def normalize(depths, lo_pct=1.0, hi_pct=99.0):
-    """Clip-wide robust normalisation to 0..1 (near = 1). One range for the whole clip = no flicker."""
+def clear_work():
+    """Remove scratch frames from earlier jobs (a file still mapped by this process just stays until next time)."""
+    import gc
+    gc.collect()
+    if os.path.isdir(WORK):
+        for f in os.listdir(WORK):
+            try:
+                os.remove(os.path.join(WORK, f))
+            except OSError:
+                pass
+
+
+def normalize(depths, lo_pct=1.0, hi_pct=99.0, shoulder=False):
+    """Clip-wide robust normalisation to 0..1 (near = 1). One range for the whole clip = no flicker.
+    shoulder: the nearest few percent (a fist or a leg swinging into the lens) roll off softly toward white instead of
+    being cut flat — so they keep their shape in clay instead of turning into a flat white patch."""
     sample = depths[:: max(1, len(depths) // 60)].ravel()
     lo, hi = np.percentile(sample, [lo_pct, hi_pct])
-    return np.clip((depths - lo) / max(hi - lo, 1e-6), 0, 1).astype(np.float32)
+    x = (depths - lo) / max(hi - lo, 1e-6)
+    if shoulder:
+        k = 0.85  # below this: untouched; above: a smooth curve (same slope at k) that keeps climbing toward 1, never clips
+        x = np.where(x > k, k + (1 - k) * (1 - np.exp(-np.maximum(x - k, 0) / (1 - k))), x)
+    return np.clip(x, 0, 1).astype(np.float32)
 
 
 def matte(d, cutoff, feather=0.06):
@@ -164,12 +203,27 @@ def colorize(d, ramp="inferno"):
     return cv2.cvtColor(cv2.applyColorMap((d * 255).astype(np.uint8), RAMPS[ramp]), cv2.COLOR_BGR2RGB)
 
 
+NVENC = ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "15", "-b:v", "0", "-spatial-aq", "1"]
+X264 = ["-c:v", "libx264", "-crf", "14", "-preset", "medium", "-rc-lookahead", "10", "-threads", "4"]  # lean on RAM
+
+
+def video_codec(sessions):
+    """The graphics card's own video encoder (NVENC) when it can take `sessions` streams at once — almost no RAM and
+    faster; otherwise x264 with a short lookahead. (Other apps — OBS, Resolve, a browser — may hold NVENC sessions.)"""
+    test = [ffmpeg(), "-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=256x256:r=24", "-frames:v", "2"] + NVENC + ["-f", "null", "-"]
+    try:
+        ps = [subprocess.Popen(test, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) for _ in range(sessions)]
+        return NVENC if all(p.wait(timeout=20) == 0 for p in ps) else X264
+    except Exception:
+        return X264
+
+
 class Writer:
-    def __init__(self, path, w, h, fps):
+    def __init__(self, path, w, h, fps, codec=X264):
         self.p = subprocess.Popen(
             [ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
-             "-r", f"{fps:.6f}", "-i", "-", "-c:v", "libx264", "-crf", "14", "-preset", "medium",
-             "-pix_fmt", "yuv420p", "-movflags", "+faststart", path],
+             "-r", f"{fps:.6f}", "-i", "-"] + codec + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", path],
             stdin=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     def write(self, rgb):
@@ -180,32 +234,56 @@ class Writer:
         self.p.wait()
 
 
-def run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), quality="best",
+def run(*a, **k):
+    """One heavy job at a time on this PC, below normal priority, sized to the memory that's free."""
+    import guard
+    with guard.one_job(HOME, k.get("progress")):
+        guard.be_polite()
+        clear_work()
+        try:
+            return _run(*a, **k)
+        finally:
+            clear_work()
+
+
+def _run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), quality="best",
         cutoff=0.0, invert=False, ramp="inferno", out_dir=None, progress=None, name=None, people=None, only_people=False):
     """people: None (off), "auto" (find them on the first frame), or [{"box": [x1, y1, x2, y2] as fractions, "color": "#hex"}]."""
     t0 = time.time()
     say = progress or (lambda frac, msg: print(f"[{frac:4.0%}] {msg}", flush=True))
     encoder = "vitl" if quality == "best" else "vits"
     model = load_model(encoder, lambda f, m: say(0.02 + 0.08 * f, m))
+    import guard
+    info = probe(video)
+    span = ((end or info["dur"]) - (start or 0)) or info["dur"]
+    res = guard.plan(int(span * info["fps"]) + 1, info["w"], info["h"], people=bool(people) or "people" in passes)
+    if res < 1280:
+        say(0.10, f"Working at {res}px so your PC keeps enough memory")
     say(0.10, "Reading the clip")
-    frames, fps = read_frames(video, start, end)
+    frames, fps = read_frames(video, start, end, max_res=res)
+    guard.check("reading the clip")
     n, h, w = frames.shape[:3]
 
     say(0.15, f"Reading depth from {n} frames")
-    raw, _ = model.infer_video_depth(frames, fps, input_size=518, device="cuda", fp32=False)
-    d = normalize(np.asarray(raw))
+    raw, _ = model.infer_video_depth(frames, fps, input_size=518, device="cuda", fp32=False, keep_size=False)
+    d = normalize(np.asarray(raw), shoulder=True).astype(np.float16)  # model size, half precision; each frame is upsampled as it's written
+    del raw
+    guard.check("reading depth")
     if invert:
         d = 1 - d
 
     labels, tints = None, []
     if people or "people" in passes or "tinted" in passes:
         import people as ppl
-        if people in (None, "auto"):
+        auto = people in (None, "auto")
+        if auto:
             say(0.55, "Finding the people")
             people = [{"box": b, "color": ppl.COLORS[i % len(ppl.COLORS)]} for i, b in enumerate(ppl.find(frames[0]))]
-        if people:
-            labels = ppl.track(frames, [p["box"] for p in people], lambda f, m: say(0.56 + 0.14 * f, m))
-            tints = [ppl.rgb(p["color"]) for p in people]
+        later = [] if auto else None  # automatic colours: people who walk in later get the next colours
+        labels = ppl.track(frames, [p["box"] for p in people], lambda f, m: say(0.56 + 0.14 * f, m), newcomers=later)
+        for b in later or []:
+            people.append({"box": b["box"], "color": ppl.COLORS[len(people) % len(ppl.COLORS)]})
+        tints = [ppl.rgb(p["color"]) for p in people]
 
     name = name or os.path.splitext(os.path.basename(video))[0]
     tag = f"_{start:g}-{end:g}s" if (start or end) else ""
@@ -214,15 +292,17 @@ def run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), quality
     files = {p: os.path.join(out_dir, f"{name}{tag}_{p}" + ("" if p == "png16" else ".mp4")) for p in passes}
     if "png16" in files:
         os.makedirs(files["png16"], exist_ok=True)
-    writers = {p: Writer(f, w * (2 if p == "compare" else 1), h, fps) for p, f in files.items() if p != "png16"}
+    codec = video_codec(len([p for p in files if p != "png16"]))
+    writers = {p: Writer(f, w * (2 if p == "compare" else 1), h, fps, codec) for p, f in files.items() if p != "png16"}
 
     base = 0.70 if labels is not None else 0.55
     for i in range(n):
         lab = cv2.medianBlur(labels[i], 5) if labels is not None else None
-        m = matte(d[i], cutoff)
+        di_full = cv2.resize(d[i].astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+        m = matte(di_full, cutoff)
         if only_people and lab is not None:
             m = m * (lab > 0)
-        di = d[i] * m
+        di = di_full * m
         gray3 = np.dstack([(di * 255).astype(np.uint8)] * 3)
         for p, wr in writers.items():
             if p == "depth":
@@ -230,14 +310,14 @@ def run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), quality
             elif p == "color":
                 wr.write(colorize(di, ramp))
             elif p == "clay":
-                c = clay(d[i]) * m
+                c = clay(di_full) * m
                 img = np.dstack([c * 232, c * 228, c * 222])
                 for k, tint in enumerate(tints):  # each person is clay of their own colour, same light
                     sel = lab == k + 1
                     img[sel] = c[sel, None] * (60 + 195 * tint)
                 wr.write(img.astype(np.uint8))
             elif p == "normal":
-                nr = normal_rgb(d[i])
+                nr = normal_rgb(di_full)
                 wr.write((nr * m[..., None]).astype(np.uint8) if cutoff > 0 else nr)
             elif p == "tinted":
                 img = gray3.astype(np.float32)
@@ -255,6 +335,7 @@ def run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), quality
         if "png16" in files:
             cv2.imwrite(os.path.join(files["png16"], f"depth_{i:05d}.png"), (di * 65535).astype(np.uint16))
         if i % 8 == 0:
+            guard.check("writing", lambda msg: say(base + (0.99 - base) * i / n, msg))
             say(base + (0.99 - base) * i / n, f"Writing passes · frame {i} of {n}")
     for wr in writers.values():
         wr.close()

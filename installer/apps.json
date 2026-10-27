@@ -96,17 +96,16 @@
   },
   "depthmotion": {
     "desc": "Real footage in, pure motion out.",
-    "lead": "Turns any clip into motion references for AI video: the bodies, timing and camera of a real scene, without its faces, clothes or set. Feed it to Seedance, Kling or a depth ControlNet and the generation moves like the real thing.",
+    "lead": "Turns any clip into motion references for AI video: the bodies, timing and camera of a real scene, without its faces, clothes or set — so Seedance, Kling or a depth ControlNet moves like the real thing.",
     "points": [
-      "Clay pass: a grey clay render of the scene, made for Seedance 2.5's blockout (white model) reference.",
-      "People in colour: it finds and follows each person (through punches, crossings and cover) and gives each their own colour, so the model knows who is who.",
-      "Depth pass (near is white) for Kling motion, Wan VACE and depth ControlNets.",
-      "Normal map, colour depth with five ramps, and 16-bit PNG frames for Blender or Resolve.",
-      "Trim to the exact action with in and out points.",
-      "Isolate subjects: blacks out the set so only the people's motion is copied.",
-      "Steady from frame to frame, no flicker, on clips of any length.",
-      "Runs on your own graphics card. Nothing is uploaded."
+      "Clay pass: a grey clay render, made for Seedance 2.5's blockout (white model) reference.",
+      "People in colour: it follows each person, even ones who walk in later, and you pick their colours.",
+      "New location: the same motion in a new Blender set (ruins, studio or street), through the clip's own camera.",
+      "Depth for Kling, Wan VACE and ControlNets, plus normal maps and 16-bit frames for Blender or Resolve.",
+      "Trim to the action, and isolate the subjects so only their motion is copied.",
+      "A library of your scenes, with Foldernator's status colours.",
+      "Light on your PC: it runs beside your open apps and pauses if your PC needs memory. Nothing is uploaded."
     ],
-    "note": "Windows only. Needs an NVIDIA graphics card. Setup downloads its AI engine once (about 3 GB). The Best quality model is for non-commercial use; Fast is free for any use."
+    "note": "Windows only. Needs an NVIDIA graphics card; downloads its AI engine once (about 3 GB). New location needs Blender (free). Best quality is for non-commercial use; Fast is free for any use."
   }
 }

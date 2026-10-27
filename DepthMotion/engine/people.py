@@ -76,32 +76,99 @@ def tracker(say=None):
     return _tracker
 
 
-def track(frames, boxes, say=None):
-    """Follow each box through the clip → uint8 label map [T, H, W] (0 = nobody, i + 1 = boxes[i])."""
+def _box_of(lab, k):
+    ys, xs = np.nonzero(lab == k)
+    return (xs.min(), ys.min(), xs.max(), ys.max()) if len(xs) > 30 else None
+
+
+def _iou(a, b):
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    return inter / max(1, (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter)
+
+
+def _newcomers(frames, labels, c0, c1, ids, step=6, cover=0.2):
+    """The first frame in [c0, c1) where someone shows up that nobody is following yet → (local frame, [boxes]).
+    Someone whose track just slipped (they were right there a moment ago) is not a newcomer."""
+    h, w = labels.shape[1:3]
+    for t in range(c0, c1, step):
+        recent = [b for s in (t, t - step, t - 2 * step) if s >= 0 for k in ids if (b := _box_of(labels[s], k))]
+        new = []
+        for f in find(frames[t]):
+            px = (int(f[0] * w), int(f[1] * h), int(f[2] * w), int(f[3] * h))
+            region = labels[t][px[1]:px[3], px[0]:px[2]]
+            if region.size and (region > 0).mean() < cover and all(_iou(px, b) < 0.3 for b in recent):
+                new.append(f)
+        if new:
+            return t - c0, new
+    return None, []
+
+
+def track(frames, boxes, say=None, chunk=None, newcomers=None):
+    """Follow each box through the clip → uint8 label map [T, H, W] (0 = nobody, i + 1 = boxes[i]).
+    Works in chunks of `chunk` frames: SAM 2 holds every frame it's given as a large float image (~12 MB each), so a
+    whole clip at once can eat many GB. Each chunk starts from the previous chunk's last masks, so identities and
+    tracking carry straight through, and memory stays around half a gigabyte for any clip length.
+    newcomers: a list → people who walk in after the first frame are picked up too, given the next ids, and listed
+    there as {"box", "frame"} (fight scenes: people come and go)."""
     import torch
+    import guard
     say = say or (lambda f, m: None)
     n, h, w = frames.shape[:3]
     pred = tracker(say)
-    tmp = tempfile.mkdtemp(prefix="dm-people-")
-    try:
-        for i, f in enumerate(frames):  # SAM 2 reads a folder of numbered JPEGs
-            cv2.imwrite(os.path.join(tmp, f"{i:05d}.jpg"), cv2.cvtColor(f, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 92])
-        labels = np.zeros((n, h, w), np.uint8)
-        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-            state = pred.init_state(tmp, offload_video_to_cpu=True)
-            for i, b in enumerate(boxes):
-                pred.add_new_points_or_box(state, frame_idx=0, obj_id=i + 1, box=np.array([b[0] * w, b[1] * h, b[2] * w, b[3] * h], np.float32))
-            for t, ids, logits in pred.propagate_in_video(state):
-                lg = logits[:, 0].float()
-                if lg.shape[-2:] != (h, w):
-                    lg = torch.nn.functional.interpolate(lg[:, None], (h, w), mode="bilinear", align_corners=False)[:, 0]
-                best, who = lg.max(0)  # where two people overlap, the more certain one wins
-                lab = torch.where(best > 0, torch.as_tensor(ids, device=lg.device)[who], 0)
-                labels[t] = lab.to(torch.uint8).cpu().numpy()
-                if t % 6 == 0:
-                    say(t / n, f"Following {len(boxes)} {'person' if len(boxes) == 1 else 'people'} · frame {t} of {n}")
-            pred.reset_state(state)
-        return labels
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-        torch.cuda.empty_cache()
+    labels = np.zeros((n, h, w), np.uint8)
+    # VRAM first: with room on the card the tracker keeps its frames THERE (not in RAM) and takes bigger chunks
+    on_gpu = guard.gpu_room() > 6
+    chunk = chunk or (120 if on_gpu else 40)
+    ids = list(range(1, len(boxes) + 1))
+    c0 = 0
+    while c0 < n:
+        c1 = min(n, c0 + chunk)
+        tmp = tempfile.mkdtemp(prefix="dm-people-")
+        try:
+            for i, f in enumerate(frames[c0:c1]):  # SAM 2 reads a folder of numbered JPEGs
+                cv2.imwrite(os.path.join(tmp, f"{i:05d}.jpg"), cv2.cvtColor(f, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 92])
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                state = pred.init_state(tmp, offload_video_to_cpu=not on_gpu)
+                prompts = []  # (local frame, id, box or mask)
+                for k in ids:
+                    if c0 == 0 and k <= len(boxes):
+                        b = boxes[k - 1]
+                        prompts.append((0, k, np.array([b[0] * w, b[1] * h, b[2] * w, b[3] * h], np.float32)))
+                    elif c0 > 0 and (labels[c0] == k).sum() > 30:  # carried on from the last frame of the previous chunk
+                        prompts.append((0, k, labels[c0] == k))
+                for _ in range(4):  # follow everyone; then look for anyone new, and follow again with them added
+                    for fi, k, p in prompts:
+                        if p.dtype == bool:
+                            pred.add_new_mask(state, frame_idx=fi, obj_id=k, mask=p)
+                        else:
+                            pred.add_new_points_or_box(state, frame_idx=fi, obj_id=k, box=p)
+                    if prompts:
+                        for t, oids, logits in pred.propagate_in_video(state):
+                            lg = logits[:, 0].float()
+                            if lg.shape[-2:] != (h, w):
+                                lg = torch.nn.functional.interpolate(lg[:, None], (h, w), mode="bilinear", align_corners=False)[:, 0]
+                            best, who = lg.max(0)  # where two people overlap, the more certain one wins
+                            lab = torch.where(best > 0, torch.as_tensor(oids, device=lg.device)[who], 0)
+                            labels[c0 + t] = lab.to(torch.uint8).cpu().numpy()
+                    if newcomers is None or len(ids) >= len(COLORS):
+                        break
+                    fi, new = _newcomers(frames, labels, c0, c1, ids)
+                    if not new:
+                        break
+                    pred.reset_state(state)  # SAM 2 takes new people only before it starts following
+                    for b in new[:len(COLORS) - len(ids)]:
+                        ids.append(len(ids) + 1)
+                        prompts.append((fi, ids[-1], np.array([b[0] * w, b[1] * h, b[2] * w, b[3] * h], np.float32)))
+                        newcomers.append({"box": b, "frame": c0 + fi})
+                pred.reset_state(state)
+                del state
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+            torch.cuda.empty_cache()
+        guard.check("following the people", lambda msg: say(c1 / n, msg))
+        say(c1 / n, f"Following {len(ids)} {'person' if len(ids) == 1 else 'people'} · frame {c1} of {n}")
+        if c1 >= n:
+            break
+        c0 = c1 - 1  # one frame of overlap: the next chunk starts on this chunk's last masks
+    return labels
