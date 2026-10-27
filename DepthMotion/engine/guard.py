@@ -112,16 +112,17 @@ def need_gb(frames, w, h, people=False, location=False, tracker_on_gpu=True):
 
 
 def plan(frames, src_w, src_h, max_res=1280, people=False, location=False):
-    """→ the working long-side resolution that fits in the RAM that's free beyond the reserve.
-    A roomy PC gets full resolution; a crowded one gets a smaller working size; a full one gets a clear refusal."""
-    room = free_gb() - reserve_gb()
+    """→ the working long-side resolution. Comfortable first (the reserve left for other apps); if nothing fits that,
+    the job still runs when it fits above the pause floor — it pauses mid-job if the PC needs its memory back — so a
+    normal day's apps never block it. Only a job that can't fit at all is refused."""
     on_gpu = gpu_room() > 6
-    for res in (max_res, 960, 720, 540):
-        s = min(1.0, res / max(src_w, src_h))
-        if need_gb(frames, src_w * s, src_h * s, people, location, on_gpu) <= room:
-            return res
-    raise LowMemory(f"Not enough free memory for this clip right now ({free_gb():.1f} GB free; DepthMotion leaves "
-                    f"{reserve_gb():.0f} GB for your other apps). Trim it shorter or close something heavy, then try again.")
+    for room in (free_gb() - reserve_gb(), free_gb() - FLOOR_GB - 0.2):
+        for res in (max_res, 960, 720, 540):
+            s = min(1.0, res / max(src_w, src_h))
+            if need_gb(frames, src_w * s, src_h * s, people, location, on_gpu) <= room:
+                return res
+    raise LowMemory(f"Not enough free memory for this clip right now ({free_gb():.1f} GB free). "
+                    f"Trim it shorter or close something heavy, then try again.")
 
 
 class one_job:
@@ -219,16 +220,20 @@ def snapshot():
 
 
 def preflight(frames, src_w, src_h, people=False, location=False, max_res=1280):
-    """What a job would need, at which working size, and whether it can start now — without starting it."""
-    room = free_gb() - reserve_gb()
+    """What a job would need, at which working size, and whether it can start now — without starting it.
+    tight: it fits, but only by dipping into the reserve (it may pause for a moment if other apps need memory)."""
     on_gpu = gpu_room() > 6
-    full = None
+    room, hard = free_gb() - reserve_gb(), free_gb() - FLOOR_GB - 0.2
+    needs = []
     for res in (max_res, 960, 720, 540):
         s = min(1.0, res / max(src_w, src_h))
-        need = need_gb(frames, src_w * s, src_h * s, people, location, on_gpu)
-        full = full or need
-        if need <= room:
-            return {"ok": True, "res": res, "need": round(need, 1), "need_full": round(full, 1), "room": round(room, 1),
-                    "reduced": res < max_res, "tracker_on_gpu": on_gpu}
-    return {"ok": False, "res": None, "need": round(need, 1), "need_full": round(full, 1), "room": round(room, 1),
-            "short_by": round(need - room, 1), "tracker_on_gpu": on_gpu}
+        needs.append((res, need_gb(frames, src_w * s, src_h * s, people, location, on_gpu)))
+    full = needs[0][1]
+    for limit, tight in ((room, False), (hard, True)):
+        for res, need in needs:
+            if need <= limit:
+                return {"ok": True, "tight": tight, "res": res, "need": round(need, 1), "need_full": round(full, 1),
+                        "room": round(max(room, 0) if not tight else hard, 1), "reduced": res < max_res, "tracker_on_gpu": on_gpu}
+    res, need = needs[-1]
+    return {"ok": False, "res": None, "need": round(need, 1), "need_full": round(full, 1), "room": round(hard, 1),
+            "short_by": round(need - hard, 1), "tracker_on_gpu": on_gpu}

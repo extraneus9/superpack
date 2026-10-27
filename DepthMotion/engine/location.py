@@ -54,7 +54,11 @@ def run(*a, **k):
     import guard
     with guard.one_job(dm.HOME, k.get("say")):
         guard.be_polite()
-        return _run(*a, **k)
+        dm.clear_work()
+        try:
+            return _run(*a, **k)
+        finally:
+            dm.clear_work()  # the clip's scratch frames on disk
 
 
 def _run(video, start=0.0, end=None, style="ruins", seed=7, sun=18.0, quality="fast", colors=None, out=None, say=None,
@@ -77,17 +81,21 @@ def _run(video, start=0.0, end=None, style="ruins", seed=7, sun=18.0, quality="f
         cv2.imwrite(os.path.join(out, "frames", f"{t:05d}.jpg"), cv2.cvtColor(frames[t], cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 92])
 
     say(0.02, "Finding the people")
-    found = [p["box"] for p in people] if people else ppl.find(frames[0], min_score=0.85, min_aspect=0.8)  # not posts or ropes
-    picked = [p.get("color") for p in people] if people else (colors or [None] * len(found))
+    strict = dict(min_score=0.85, min_aspect=0.8)  # not posts or ropes
+    found = [p["box"] for p in people] if people else ppl.find(frames[0], **strict)
+    picked = [p.get("color") for p in people] if people else list(colors or [None] * len(found))
+    later = None if people else []  # automatic: people who walk in after the first frame are followed too
+    labels = ppl.track(frames, found, lambda f, m: say(0.04 + 0.14 * f, m), newcomers=later, find_kw=strict)
+    for b in later or []:
+        found.append(b["box"]); picked.append(None)
     if not found:
-        raise RuntimeError("Nobody found on the first frame — move the in point to a frame where everyone is visible.")
-    labels = ppl.track(frames, found, lambda f, m: say(0.04 + 0.14 * f, m))
+        raise RuntimeError("Nobody found in this clip — move the in point to a frame where the people are visible.")
     ids = [i + 1 for i in range(len(found))]
 
     say(0.19, "Reading the depth")
     model = dm.load_model("vitl" if quality == "best" else "vits", lambda f, m: say(0.19, m))
     raw, _ = model.infer_video_depth(frames, fps, input_size=518, device="cuda", fp32=False)
-    disp = dm.normalize(np.asarray(raw)).astype(np.float16)  # half-size in RAM
+    disp = dm.normalize(np.asarray(raw), hi_pct=99.8, shoulder=True).astype(np.float16)  # half-size; a head at the lens keeps its shape
     del raw
     np.savez_compressed(os.path.join(out, "disp.npz"), disp=disp.astype(np.float16))
     np.savez_compressed(os.path.join(out, "labels.npz"), labels=labels)
@@ -135,7 +143,7 @@ def _run(video, start=0.0, end=None, style="ruins", seed=7, sun=18.0, quality="f
     C = C * lam
 
     say(0.61, "Finding the floor")
-    feet, places, dists = [], {k: [] for k in ids}, {k: [] for k in ids}
+    feet, lows, places, dists = [], [], {k: [] for k in ids}, {k: [] for k in ids}
     for t in range(t_):
         z = zmap(t)
         for k in ids:
@@ -147,9 +155,10 @@ def _run(video, start=0.0, end=None, style="ruins", seed=7, sun=18.0, quality="f
             dists[k].append(zk)
             cam = lambda u, v, zz: np.array([(u - w / 2) * zz / focal, (v - h / 2) * zz / focal, zz])
             places[k].append(R[t] @ cam(xs.mean(), ys.mean(), zk) + C[t])
-            if ys.max() < h - 4:  # their feet are in frame: the lowest point touches the floor, at the body's distance
-                v = ys.max(); u = float(np.median(xs[ys >= v - 3]))
-                feet.append(R[t] @ cam(u, v, zk) + C[t])
+            v = ys.max(); u = float(np.median(xs[ys >= v - 3]))
+            lows.append(R[t] @ cam(u, v, zk) + C[t])  # the lowest visible bit of the body: the floor can't be above it
+            if v < h - 4:  # their feet are in frame: the lowest point touches the floor, at the body's distance
+                feet.append(lows[-1])
     feet = np.array(feet) if feet else np.array([R[0] @ np.array([0, h * 0.4 * 3 / focal, 3.0]) + C[0]])
     # the floor: a plane under the feet with height + tilt, no roll (cameras rarely roll; two people = two blobs)
     slope = np.polyfit(feet[:, 2], feet[:, 1], 1)[0] if len(feet) > 20 and np.ptp(feet[:, 2]) > 0.4 else 0.0
@@ -157,6 +166,13 @@ def _run(video, start=0.0, end=None, style="ruins", seed=7, sun=18.0, quality="f
     floor_pt = np.median(feet, 0)
     if -(floor_pt @ up) < 0.2:  # the camera under the floor can't be right: a level floor 1.5 m below the lens
         up = np.array([0.0, -1.0, 0.0]); floor_pt = np.array([0.0, 1.5, 0.0])
+    # never above a body: if any visible part of anyone sits below the floor, lower it — and when the feet are never in
+    # frame (legs cut by the bottom edge), leave room for the shins and feet we can't see
+    if lows:
+        under = float(np.percentile((np.array(lows) - floor_pt) @ up, 2))  # height of the lowest visible bits (robust)
+        room = 0.02 if len(feet) else 0.35
+        if under < room:
+            floor_pt = floor_pt + up * (under - room)
     Rb, origin = to_blender.world_basis(up, floor_pt)
 
     # → scene.json for Blender: camera per frame, everyone's place on the floor, their distance per frame

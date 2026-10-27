@@ -22,7 +22,7 @@ function stage(out) {
   const csc = path.join(process.env.SystemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
   execFileSync(csc, ['/nologo', '/codepage:65001', '/target:winexe', '/platform:x64', '/optimize+', `/out:${path.join(out, 'DepthMotion.exe')}`,
     `/win32manifest:${path.join(SRC, 'launcher', 'app.manifest')}`, `/win32icon:${path.join(SRC, 'assets', 'icon.ico')}`,
-    '/r:System.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', path.join(SRC, 'launcher', 'DepthMotion.cs')], { stdio: 'inherit' });
+    '/r:System.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', '/r:System.Management.dll', path.join(SRC, 'launcher', 'DepthMotion.cs')], { stdio: 'inherit' });
   const skip = (p) => !/__pycache__|\.pyc$/.test(p);
   fs.cpSync(path.join(SRC, 'engine'), path.join(out, 'engine'), { recursive: true, filter: skip });
   fs.writeFileSync(path.join(out, 'engine', 'BUILD'), String(Date.now())); // launcher restarts an engine from an older build

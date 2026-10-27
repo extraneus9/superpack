@@ -19,8 +19,10 @@
 </header>
 
 <nav id="lib" class="tile">
-  <div class="libhead"><h3>Library</h3><button id="newFolder" title="New folder in the selected folder">+ Folder</button></div>
+  <div class="libhead"><h3>Library</h3><button id="newFolder" title="New folder here">+ Folder</button></div>
+  <nav id="crumbs" aria-label="Where you are"></nav>
   <div id="libTree"></div>
+  <div id="libGrip" title="Drag to resize · double-click to reset" role="separator" aria-orientation="vertical"></div>
   <div class="libfoot">
     <span>Saving to <b id="destName">Library</b></span>
     <button id="openLib" class="ghostbtn">Open in Foldernator</button>
@@ -117,7 +119,7 @@
   </section>
 
   <section id="pre" class="tile" hidden>
-    <div class="prehead"><b id="preVerdict">Checking memory…</b><span id="preNums"></span></div>
+    <div class="prehead" title="Click for details"><b id="preVerdict">Checking memory…</b><span id="preNums"></span><i class="caret">▾</i></div>
     <div class="prebar"><i id="preNeed"></i><b id="preRoom"></b></div>
     <p id="preNote"></p>
     <div id="preTips" hidden><span>To free memory, close:</span><ul id="preList"></ul></div>

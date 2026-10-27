@@ -44,7 +44,7 @@ def run(folder, quality="fast", say=None):
     else:
         say(0.05, "Reading the fighters' depth from the footage")
         raw, _ = dm.load_model("vitl" if quality == "best" else "vits").infer_video_depth(frames, S["fps"], input_size=518, device="cuda", fp32=False)
-        disp = dm.normalize(np.asarray(raw))                  # near = 1, one range for the whole clip
+        disp = dm.normalize(np.asarray(raw), shoulder=True)   # near = 1, one range for the whole clip
 
     # each fighter's distance from the camera on every frame
     ids, dist, tints = [], [], []
@@ -82,7 +82,7 @@ def run(folder, quality="fast", say=None):
     say(0.6, "Writing the passes")
     lo, hi = np.percentile(1 / Z[:, ::4, ::4].astype(np.float32), [2, 99.5])  # one range for the clip, from a sample
     # near = white; the gentle curve lifts the set's mid and far planes so it still reads next to the much nearer people
-    near_of = lambda t: np.clip((1 / Z[t].astype(np.float32) - lo) / (hi - lo), 0, 1) ** 0.6
+    near_of = lambda t: np.clip(dm.soft_near((1 / Z[t].astype(np.float32) - lo) / (hi - lo)), 0, 1) ** 0.6
     name = "relocated"
     paths = {k: os.path.join(folder, f"{name}_{k}.mp4") for k in ("tinted", "clay", "check")}
     codec = dm.video_codec(3)
@@ -92,7 +92,7 @@ def run(folder, quality="fast", say=None):
         g = near_of(t)
         tinted = np.dstack([g * 255] * 3)
         clay_bg = cv2.cvtColor(cv2.imread(os.path.join(folder, "env_clay", f"c_{t + 1:04d}.png")), cv2.COLOR_BGR2RGB).astype(np.float32)
-        body = dm.clay(disp[t])
+        body = dm.clay(disp[t], labels[t])  # (disp already rolls off softly near the lens; each person shaded on their own)
         for n, tint in enumerate(tints):
             sel = who[t] == n + 1
             if tint is None:  # not coloured: plain depth, plain grey clay

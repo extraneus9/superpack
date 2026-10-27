@@ -314,7 +314,8 @@ class H(BaseHTTPRequestHandler):
                 import cv2
                 import people
                 with LOCK:
-                    frame = dm.read_frames(c["path"], float(o.get("start") or 0), float(o.get("start") or 0) + 0.2)[0][0]
+                    frame = dm.np.array(dm.read_frames(c["path"], float(o.get("start") or 0), float(o.get("start") or 0) + 0.2)[0][0])
+                    dm.clear_work()  # only one frame was needed: drop the scratch file now
                     boxes = people.find(frame)
                 small = cv2.resize(frame, (640, round(640 * frame.shape[0] / frame.shape[1])))
                 jpg = cv2.imencode(".jpg", cv2.cvtColor(small, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 85])[1]
@@ -347,6 +348,7 @@ def watchdog():
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 7862
+    dm.clear_work()  # scratch frames left by an engine that was closed mid-job
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     if "--keep" not in sys.argv:
         threading.Thread(target=watchdog, daemon=True).start()

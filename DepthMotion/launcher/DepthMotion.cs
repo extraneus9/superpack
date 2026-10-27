@@ -158,8 +158,28 @@ static class DepthMotion
         return true;
     }
 
+    // Edge can keep the app's private browser running after its last window closes; a new --app request then goes to
+    // that hidden process and no window ever appears. If none of its processes shows a window, end them first.
+    static void ClearHiddenWindow()
+    {
+        string profile = Path.Combine(Home, "window").ToLowerInvariant();
+        var ours = new System.Collections.Generic.List<Process>();
+        try
+        {
+            using (var q = new System.Management.ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='msedge.exe'"))
+                foreach (System.Management.ManagementObject o in q.Get())
+                    if (((o["CommandLine"] as string) ?? "").ToLowerInvariant().Contains(profile))
+                        try { ours.Add(Process.GetProcessById(Convert.ToInt32(o["ProcessId"]))); } catch { }
+        }
+        catch { return; }
+        foreach (var p in ours) if (p.MainWindowHandle != IntPtr.Zero) return;  // a real window is open: leave it
+        foreach (var p in ours) try { p.Kill(); } catch { }
+        if (ours.Count > 0) Thread.Sleep(600);
+    }
+
     static void Window(int port)
     {
+        ClearHiddenWindow();
         string url = "http://127.0.0.1:" + port + "/";
         string edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe");
         if (!File.Exists(edge)) edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe");

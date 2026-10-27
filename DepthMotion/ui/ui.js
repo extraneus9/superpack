@@ -271,57 +271,97 @@ $('#remerge').addEventListener('click', () => start('/api/remerge', { folder: st
 fetch('/api/state').then((r) => r.json()).then((s) => { $('#blenderHint').hidden = !!s.blender; });
 
 // ---------- library: real folders (synced with Foldernator through desktop.ini) ----------
-const lib = { dest: null, statuses: [], closed: new Set(JSON.parse(localStorage.getItem('dm-closed') || '[]')), openScene: null };
+const lib = { dest: null, statuses: [], openScene: null, tree: null };
+// you walk through the library like a gallery: the folder you're looking at is the one new results save to
 async function loadLibrary(focus) {
   const j = await (await fetch('/api/library')).json();
-  lib.statuses = j.statuses; lib.root = j.tree.path;
-  if (!lib.dest) lib.dest = lib.root;
+  lib.statuses = j.statuses; lib.root = j.tree.path; lib.tree = j.tree;
+  if (!lib.dest || !findNode(j.tree, lib.dest)) lib.dest = lib.root;
   $('#openLib').textContent = j.foldernator ? 'Open in Foldernator' : 'Open folder';
   if (focus) lib.openScene = focus;
-  const tree = $('#libTree'); tree.textContent = '';
-  tree.append(folderNode(j.tree, 0));
-  const d = lib.dest === lib.root ? 'Library' : lib.dest.split(/[\\/]/).pop();
-  $('#destName').textContent = d;
-}
-const statusColor = (n) => n.color || (lib.statuses.find((s) => s.key === n.status) || {}).color;
-function folderNode(n, depth) {
-  const wrap = document.createElement('div');
-  const row = document.createElement('div'); row.className = 'row' + (n.path === lib.dest ? ' dest' : '') + (lib.closed.has(n.path) ? ' closed' : '');
-  row.innerHTML = `<span class="car">▾</span><span class="fi"></span><span class="nm"></span>`;
-  row.querySelector('.nm').textContent = n.name;
-  const c = statusColor(n); if (c) row.querySelector('.fi').style.background = c;
-  row.addEventListener('click', (e) => {
-    if (e.target.classList.contains('car')) { toggle(n.path); return; }
-    lib.dest = n.path; loadLibrary();
+  const here = findNode(j.tree, lib.dest);
+  // the path on top: each step is a button (and a place to drop a scene)
+  const crumbs = $('#crumbs'); crumbs.textContent = '';
+  pathTo(j.tree, lib.dest).forEach((n, i, all) => {
+    if (i) { const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '›'; crumbs.append(sep); }
+    const b = document.createElement('button'); b.textContent = i ? n.name : 'Library'; b.title = n.path;
+    if (i === all.length - 1) b.className = 'here';
+    b.addEventListener('click', () => go(n.path));
+    b.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e, n, 'folder', i === 0); });
+    dropTarget(b, n.path);
+    crumbs.append(b);
   });
-  row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e, n, 'folder', depth === 0); });
-  dropTarget(row, n.path);
-  if (depth > 0) { row.draggable = true; row.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/dm-path', n.path)); }
-  const kids = document.createElement('div'); kids.className = 'kids' + (lib.closed.has(n.path) ? ' hide' : '');
-  for (const f of n.folders) kids.append(folderNode(f, depth + 1));
-  for (const sc of n.scenes) kids.append(sceneRow(sc));
-  wrap.append(row, kids);
-  return wrap;
+  const box = $('#libTree'); box.textContent = '';
+  if (here.folders.length) {
+    const folds = document.createElement('div'); folds.className = 'folds';
+    for (const f of here.folders) folds.append(folderRow(f));
+    box.append(folds);
+  }
+  if (here.scenes.length) {
+    const grid = document.createElement('div'); grid.className = 'scenes';
+    for (const sc of [...here.scenes].sort((x, y) => (y.made || '').localeCompare(x.made || ''))) grid.append(sceneCard(sc));
+    box.append(grid);
+  }
+  if (!here.folders.length && !here.scenes.length) {
+    const e = document.createElement('p'); e.className = 'libempty'; e.textContent = 'Nothing here yet. New results save to this folder.'; box.append(e);
+  }
+  $('#destName').textContent = here === j.tree ? 'Library' : here.name;
 }
-function sceneRow(sc) {
-  const row = document.createElement('div'); row.className = 'row' + (sc.path === lib.openScene ? ' open-scene' : '');
-  row.draggable = true;
-  const th = document.createElement(sc.thumb ? 'img' : 'span'); th.className = 'th';
-  if (sc.thumb) th.src = '/thumb?p=' + encodeURIComponent(sc.thumb);
-  const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = sc.name; nm.title = `${sc.name}${sc.clip ? ' · from ' + sc.clip : ''}${sc.made ? ' · ' + sc.made : ''}`;
-  const kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = sc.kind === 'location' ? (sc.style || 'location') : '';
-  const dot = document.createElement('span'); dot.className = 'dot'; const c = statusColor(sc); dot.style.background = c || 'transparent';
-  row.append(th, nm, kind, dot);
-  row.addEventListener('click', () => openScene(sc.path));
-  row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e, sc, 'scene'); });
-  row.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/dm-path', sc.path));
+const findNode = (n, p) => (n.path === p ? n : n.folders.reduce((hit, f) => hit || findNode(f, p), null));
+const pathTo = (n, p) => (n.path === p ? [n] : n.folders.reduce((hit, f) => hit || ((r) => r && [n, ...r])(pathTo(f, p)), null));
+const statusColor = (n) => n.color || (lib.statuses.find((s) => s.key === n.status) || {}).color;
+const go = (p) => { lib.dest = p; loadLibrary(); };
+function folderRow(n) {
+  const row = document.createElement('div'); row.className = 'fold'; row.draggable = true;
+  row.innerHTML = '<span class="fi"></span><span class="nm"></span><span class="n"></span>';
+  row.querySelector('.nm').textContent = n.name; row.title = n.name;
+  const count = n.folders.length + n.scenes.length; row.querySelector('.n').textContent = count || '';
+  const c = statusColor(n); if (c) row.querySelector('.fi').style.background = c;
+  row.addEventListener('click', () => go(n.path));
+  row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e, n, 'folder', false); });
+  row.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/dm-path', n.path));
+  dropTarget(row, n.path);
   return row;
 }
-function toggle(p) {
-  lib.closed.has(p) ? lib.closed.delete(p) : lib.closed.add(p);
-  try { localStorage.setItem('dm-closed', JSON.stringify([...lib.closed])); } catch { /* fine */ }
-  loadLibrary();
+const KIND = (sc) => (sc.kind === 'location' ? (sc.style ? sc.style[0].toUpperCase() + sc.style.slice(1) : 'New location') : 'Extract');
+function when(made) {  // "2026-10-27 15:20" → "Oct 27 · 3:20 PM"
+  const d = made && new Date(made.replace(' ', 'T'));
+  return d && !isNaN(d) ? `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : '';
 }
+function sceneCard(sc) {
+  const card = document.createElement('div'); card.className = 'card' + (sc.path === lib.openScene ? ' open-scene' : ''); card.draggable = true;
+  card.title = `${sc.name}${sc.clip ? '\nfrom ' + sc.clip : ''}`;
+  const pic = document.createElement('div'); pic.className = 'pic';
+  if (sc.thumb) { const im = document.createElement('img'); im.loading = 'lazy'; im.alt = ''; im.src = '/thumb?p=' + encodeURIComponent(sc.thumb); pic.append(im); }
+  const kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = KIND(sc); pic.append(kind);
+  const c = statusColor(sc); if (c) { const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = c; pic.append(dot); }
+  const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = sc.name;
+  const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = when(sc.made);
+  card.append(pic, nm, meta);
+  card.addEventListener('click', () => openScene(sc.path));
+  card.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e, sc, 'scene'); });
+  card.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/dm-path', sc.path));
+  return card;
+}
+// drag the rail's right edge to make the library wider or narrower (remembered; double-click resets)
+(function grip() {
+  const g = $('#libGrip'), MIN = 220, MAX = 640, DEF = 260;
+  const set = (px) => { const w = Math.round(Math.max(MIN, Math.min(MAX, px))); document.body.style.setProperty('--lib-w', w + 'px'); return w; };
+  try { const saved = +localStorage.getItem('dm-libw'); if (saved) set(saved); } catch { /* fine */ }
+  g.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); g.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
+    const x0 = e.clientX, w0 = $('#lib').getBoundingClientRect().width;
+    const move = (m) => set(w0 + m.clientX - x0);
+    const up = (u) => {
+      g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); document.body.classList.remove('resizing');
+      lib.resized = Date.now();  // letting go of the edge is not a click on whatever is under the pointer
+      try { localStorage.setItem('dm-libw', set(w0 + u.clientX - x0)); } catch { /* fine */ }
+    };
+    g.addEventListener('pointermove', move); g.addEventListener('pointerup', up);
+  });
+  document.addEventListener('click', (e) => { if (Date.now() - (lib.resized || 0) < 300) { e.stopPropagation(); e.preventDefault(); } }, true);
+  g.addEventListener('dblclick', () => { set(DEF); try { localStorage.removeItem('dm-libw'); } catch { /* fine */ } });
+})();
 function dropTarget(row, into) {
   row.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('text/dm-path')) { e.preventDefault(); e.stopPropagation(); row.classList.add('drop'); } });
   row.addEventListener('dragleave', () => row.classList.remove('drop'));
@@ -349,7 +389,7 @@ function menu(e, n, kind, isRoot) {
   const m = $('#menu'); m.textContent = ''; m.hidden = false;
   const item = (label, fn, cls) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.addEventListener('click', () => { m.hidden = true; fn(); }); m.append(b); return b; };
   if (kind === 'folder') item('New folder here', () => ask('New folder', '', (name) => act('mkdir', { parent: n.path, name })));
-  if (kind === 'folder') item('Save new results here', () => { lib.dest = n.path; loadLibrary(); });
+  if (kind === 'folder') item('Open (and save new results here)', () => go(n.path));
   if (!isRoot) item('Rename', () => ask('Rename', n.name, (name) => act('rename', { path: n.path, name })));
   if (!isRoot) {
     m.append(document.createElement('hr'));
@@ -360,6 +400,10 @@ function menu(e, n, kind, isRoot) {
     item('No status', () => act('status', { path: n.path, status: null }));
   }
   m.append(document.createElement('hr'));
+  // a New location scene: open its Blender file itself (the folder option below just shows where it is)
+  if (kind === 'scene' && n.kind === 'location') {
+    item('Open in Blender', () => fetch('/api/openblend', { method: 'POST', body: JSON.stringify({ path: n.path + (n.path.includes('\\') ? '\\' : '/') + 'env.blend' }) }));
+  }
   item($('#openLib').textContent, () => act('open', { path: n.path }));
   if (!isRoot) item('Delete (to the Recycle Bin)', () => { if (confirm(`Move "${n.name}" to the Recycle Bin?`)) act('trash', { path: n.path }); }, 'danger');
   const r = m.getBoundingClientRect();
@@ -372,7 +416,9 @@ function ask(title, value, done) {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) { m.hidden = true; done(inp.value.trim()); } if (e.key === 'Escape') m.hidden = true; });
   m.append(inp); setTimeout(() => { inp.focus(); inp.select(); }, 0);
 }
-document.addEventListener('click', (e) => { if (!e.target.closest('#menu')) $('#menu').hidden = true; });
+// a click outside closes the menu — but not the click that just opened it ("+ Folder", or a menu item that asks
+// for a name: its button is gone from the page by the time this runs)
+document.addEventListener('click', (e) => { if (e.target.isConnected && !e.target.closest('#menu, #newFolder')) $('#menu').hidden = true; });
 $('#newFolder').addEventListener('click', () => {
   const m = $('#menu'); const b = $('#newFolder').getBoundingClientRect();
   ask('New folder', '', (name) => act('mkdir', { parent: lib.dest || lib.root, name }));
@@ -420,8 +466,10 @@ function preflight(now) {
       if (p.error) return;
       const was = st.pre && st.pre.ok; st.pre = p;
       card.hidden = false;
-      card.className = 'tile ' + (!p.ok ? 'bad' : p.reduced ? 'warn' : 'ok');
-      $('#preVerdict').textContent = !p.ok ? '✕ Not enough memory right now' : p.reduced ? `⚠ Will run at ${p.res}px to fit` : '✓ Ready at full quality';
+      card.classList.toggle('open', !p.ok || !!st.preOpen);  // compact unless it can't run, or you opened it
+      card.classList.remove('bad', 'warn', 'ok'); card.classList.add('tile', !p.ok ? 'bad' : p.reduced || p.tight ? 'warn' : 'ok');
+      $('#preVerdict').textContent = !p.ok ? '✕ Not enough memory right now' : p.reduced ? `⚠ Will run at ${p.res}px to fit`
+        : p.tight ? '⚠ Ready — memory is tight' : '✓ Ready at full quality';
       $('#preNums').textContent = `needs ${gb(p.need)} · ${gb(Math.max(0, p.room))} available`;
       const scale = Math.max(p.need_full, p.room, 0.1) * 1.15;
       $('#preNeed').style.width = `${Math.min(100, (p.need / scale) * 100)}%`;
@@ -429,9 +477,10 @@ function preflight(now) {
       $('#preNote').textContent = !p.ok
         ? `This clip needs about ${gb(p.need)}; your PC can spare ${gb(Math.max(0, p.room))} right now (DepthMotion keeps ${gb(st.res ? st.res.reserve : 3)} for your other apps). Free about ${gb(p.short_by)} — or trim the clip shorter.`
         : p.reduced ? `Your PC is busy, so it works at ${p.res}px instead of 1280px. Free about ${gb(p.need_full - p.room)} for full quality.`
+          : p.tight ? `It fits, with little to spare. If your other apps need memory while it works, it pauses for a moment and carries on by itself.`
           : `Fits with room to spare. ${p.tracker_on_gpu ? 'The heavy tracking runs on your graphics card.' : ''}`;
       const tips = (st.top || []).slice(0, 5);
-      $('#preTips').hidden = p.ok && !p.reduced || !tips.length;
+      $('#preTips').hidden = p.ok && !p.reduced && !p.tight || !tips.length;
       $('#preList').innerHTML = '';
       for (const a of tips) {
         const li = document.createElement('li');
@@ -444,6 +493,7 @@ function preflight(now) {
     } catch { /* ignore */ }
   }, now ? 0 : 350);
 }
+$('#pre .prehead').addEventListener('click', () => { st.preOpen = !st.preOpen; $('#pre').classList.toggle('open', st.preOpen || (st.pre && !st.pre.ok)); });
 meter(); setInterval(meter, 4000);
 ['change', 'input'].forEach((ev) => { tin.addEventListener(ev, () => preflight()); tout.addEventListener(ev, () => preflight()); });
 $('#pplOn').addEventListener('change', () => preflight());

@@ -161,10 +161,69 @@ def normalize(depths, lo_pct=1.0, hi_pct=99.0, shoulder=False):
     sample = depths[:: max(1, len(depths) // 60)].ravel()
     lo, hi = np.percentile(sample, [lo_pct, hi_pct])
     x = (depths - lo) / max(hi - lo, 1e-6)
-    if shoulder:
-        k = 0.85  # below this: untouched; above: a smooth curve (same slope at k) that keeps climbing toward 1, never clips
-        x = np.where(x > k, k + (1 - k) * (1 - np.exp(-np.maximum(x - k, 0) / (1 - k))), x)
-    return np.clip(x, 0, 1).astype(np.float32)
+    return np.clip(soft_near(x) if shoulder else x, 0, 1).astype(np.float32)
+
+
+def soft_near(x, k=0.85):
+    """Below k: untouched; above: a smooth curve (same slope at k) that keeps climbing toward 1 and never clips — the
+    nearest things keep their shape instead of flattening into a white patch."""
+    x = np.asarray(x, np.float32)
+    return np.where(x > k, k + (1 - k) * (1 - np.exp(-np.maximum(x - k, 0) / (1 - k))), x)
+
+
+def clean_labels(lab):
+    """Smooth each person's outline and drop the specks: little islands of one person's colour on another (or on the
+    background) are absorbed by what surrounds them."""
+    lab = cv2.medianBlur(lab, 9)
+    out = lab.copy()
+    tiny = lab.shape[0] * lab.shape[1] * 0.0015
+    for v in np.unique(lab):
+        if v == 0:
+            continue
+        n, cc, stats, _ = cv2.connectedComponentsWithStats((lab == v).astype(np.uint8), 8)
+        if n <= 2:
+            continue
+        keep = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))  # a person is one piece: the biggest, plus any big ones
+        for c in range(1, n):
+            if c != keep and stats[c, cv2.CC_STAT_AREA] < tiny:
+                island = cc == c
+                ring = cv2.dilate(island.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~island
+                vals = out[ring]
+                out[island] = np.bincount(vals).argmax() if vals.size else 0
+    return out
+
+
+def clean_edges(d, lab):
+    """With the people followed: clean outlines, nothing loose around them.
+    1. The model's depth is soft at silhouettes — a strip where a person "bleeds" into what's behind. Each region
+       (every person, and the background) refills that strip from its own inside, so the depth steps cleanly at the
+       outline — person against background and person against person.
+    2. Around each person, anything thin and nearer than the background that isn't part of a person — flying hair,
+       a fringe, a halo — is taken out (a morphological opening only reaches things thinner than ~1% of the frame)."""
+    h, w = d.shape
+    r = max(3, w // 200)                                # how far the model's soft ramp reaches
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
+    out = d.copy()
+    for v in np.unique(lab):
+        m = (lab == v).astype(np.uint8)
+        core = cv2.erode(m, k).astype(np.float32)        # this region's own, unblended inside
+        if core.sum() < 20:
+            continue
+        num = cv2.GaussianBlur(d * core, (0, 0), r); den = cv2.GaussianBlur(core, (0, 0), r)
+        strip = (m > 0) & (core == 0) & (den > 1e-3)
+        out[strip] = num[strip] / den[strip]
+    person = (lab > 0).astype(np.uint8)
+    if person.any():
+        R = max(24, w // 18)                              # how far around a person loose bits are looked for
+        around = cv2.dilate(person, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * R + 1, 2 * R + 1))).astype(bool) & ~person.astype(bool)
+        bgm = 1.0 - person.astype(np.float32)             # the background behind the people, spread in from around them
+        sb = max(8.0, w / 50)
+        behind = cv2.GaussianBlur(out * bgm, (0, 0), sb) / np.maximum(cv2.GaussianBlur(bgm, (0, 0), sb), 1e-4)
+        base = np.where(person > 0, behind, out).astype(np.float32)
+        t = max(5, w // 90)
+        opened = cv2.morphologyEx(base, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * t + 1, 2 * t + 1)))
+        out = np.where(around, np.minimum(out, opened), out)
+    return out.astype(np.float32)
 
 
 def matte(d, cutoff, feather=0.06):
@@ -174,17 +233,35 @@ def matte(d, cutoff, feather=0.06):
     return np.clip((d - cutoff) / feather, 0, 1)
 
 
-def normals(d, relief=2.5):
-    z = cv2.GaussianBlur(d, (0, 0), 3.0)
-    gy, gx = np.gradient(z * max(d.shape) * relief)
-    gx, gy = np.clip(gx, -2.5, 2.5), np.clip(gy, -2.5, 2.5)  # depth cliffs at silhouettes stay soft
+def normals(d, relief=2.5, lab=None):
+    """A depth cliff (a body's outline against what's behind it) is not a surface: smoothing and shading across it
+    draws a rim round every figure. With the people known, each region's surface is worked out on its own and carried
+    smoothly right up to its outline (normalised blur extends it past the edge), so there is no rim at all; without
+    them, steep jumps are flattened."""
+    if lab is None:
+        z = cv2.GaussianBlur(d, (0, 0), 3.0)
+        gy, gx = np.gradient(z * max(d.shape) * relief)
+        ry, rx = np.gradient(d)
+        edge = cv2.dilate((np.hypot(rx, ry) > 0.012).astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+        gx[edge] *= 0.2; gy[edge] *= 0.2
+    else:
+        z = np.empty_like(d); gx = np.empty_like(d); gy = np.empty_like(d)
+        for v in np.unique(lab):
+            m = lab == v
+            core = cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32)  # skip the outline row
+            if core.sum() < 20:
+                core = m.astype(np.float32)
+            zr = cv2.GaussianBlur(d * core, (0, 0), 3.0) / np.maximum(cv2.GaussianBlur(core, (0, 0), 3.0), 1e-4)
+            ry, rx = np.gradient(zr * max(d.shape) * relief)
+            z[m] = zr[m]; gx[m] = rx[m]; gy[m] = ry[m]
+    gx, gy = np.clip(gx, -2.5, 2.5), np.clip(gy, -2.5, 2.5)
     n = np.dstack([-gx, -gy, np.ones_like(z)])
     return n / np.linalg.norm(n, axis=2, keepdims=True), z
 
 
-def clay(d):
+def clay(d, lab=None):
     """Shade a normalised float depth frame as matte grey clay: key light top-left + fill + ambient."""
-    n, z = normals(d)
+    n, z = normals(d, lab=lab)
     key = np.array([-0.5, -0.6, 0.62]); key /= np.linalg.norm(key)
     fill = np.array([0.6, 0.2, 0.77]); fill /= np.linalg.norm(fill)
     shade = 0.12 + 0.78 * np.clip(n @ key, 0, 1) + 0.15 * np.clip(n @ fill, 0, 1)
@@ -192,9 +269,9 @@ def clay(d):
     return np.clip(shade, 0, 1)
 
 
-def normal_rgb(d):
+def normal_rgb(d, lab=None):
     """Tangent-space style normal map: R = right, G = up, B = toward camera (flat = #8080ff)."""
-    n, _ = normals(d)
+    n, _ = normals(d, lab=lab)
     rgb = np.dstack([n[..., 0], -n[..., 1], n[..., 2]])
     return ((rgb * 0.5 + 0.5) * 255).astype(np.uint8)
 
@@ -269,8 +346,6 @@ def _run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), qualit
     d = normalize(np.asarray(raw), shoulder=True).astype(np.float16)  # model size, half precision; each frame is upsampled as it's written
     del raw
     guard.check("reading depth")
-    if invert:
-        d = 1 - d
 
     labels, tints = None, []
     if people or "people" in passes or "tinted" in passes:
@@ -297,8 +372,12 @@ def _run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), qualit
 
     base = 0.70 if labels is not None else 0.55
     for i in range(n):
-        lab = cv2.medianBlur(labels[i], 5) if labels is not None else None
+        lab = clean_labels(labels[i]) if labels is not None else None
         di_full = cv2.resize(d[i].astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+        if lab is not None:
+            di_full = clean_edges(di_full, lab)  # clean silhouettes where the people are followed
+        if invert:
+            di_full = 1 - di_full
         m = matte(di_full, cutoff)
         if only_people and lab is not None:
             m = m * (lab > 0)
@@ -310,14 +389,14 @@ def _run(video, start=0.0, end=None, passes=("depth", "clay", "compare"), qualit
             elif p == "color":
                 wr.write(colorize(di, ramp))
             elif p == "clay":
-                c = clay(di_full) * m
+                c = clay(di_full, lab) * m
                 img = np.dstack([c * 232, c * 228, c * 222])
                 for k, tint in enumerate(tints):  # each person is clay of their own colour, same light
                     sel = lab == k + 1
                     img[sel] = c[sel, None] * (60 + 195 * tint)
                 wr.write(img.astype(np.uint8))
             elif p == "normal":
-                nr = normal_rgb(di_full)
+                nr = normal_rgb(di_full, lab)
                 wr.write((nr * m[..., None]).astype(np.uint8) if cutoff > 0 else nr)
             elif p == "tinted":
                 img = gray3.astype(np.float32)

@@ -614,12 +614,10 @@ async function openItems(items, { inNewTab = false } = {}) {
   if (!items.length) return;
   const dirs = items.filter((i) => i.d);
   const files = items.filter((i) => !i.d);
-  // One image or video: Foldernator's viewer, each in its own window, so several stay open side by side and
-  // ← → / PageUp/Down walk the folder (Photos can't when another app opens it; Media Player reuses one window).
-  const isVideoFile = (f) => !f.d && !f.virt && ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'ogv'].includes(extOf(f.n));
-  if (files.length === 1 && !dirs.length && (isViewable(files[0]) || isVideoFile(files[0])) && state.settings.view.builtinViewer !== false) {
-    const kind = isVideoFile(files[0]) ? isVideoFile : isViewable;
-    const list = app.tab().view.filter(kind).map(({ p, n, m, s }) => ({ p, n, m, s }));
+  // One image: Foldernator's viewer, each in its own window, so ← → walk the folder (Photos can't when another
+  // app opens it). Videos and audio go to the default app (the player).
+  if (files.length === 1 && !dirs.length && isViewable(files[0]) && state.settings.view.builtinViewer !== false) {
+    const list = app.tab().view.filter(isViewable).map(({ p, n, m, s }) => ({ p, n, m, s }));
     return api.viewerOpen({ list, index: Math.max(0, list.findIndex((x) => x.p === files[0].p)) });
   }
   if (files.length > 12 && !(await confirmDialog({ title: `Open ${files.length} files?`, text: 'Each file opens in its default app.', ok: 'Open all' }))) return;

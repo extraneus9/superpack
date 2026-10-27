@@ -12,21 +12,13 @@ const prev = $('.prev'), next = $('.next'), zoomv = $('.zoomv'), info = $('.info
 let list = [], i = 0, bust = 0;
 let scale = 1, fit = 1, tx = 0, ty = 0; // zoom + pan (image px → screen)
 const preload = new Map();
-// Videos open here too (each in its own window): the player fills the window, Space plays/pauses,
-// ← → skip 5 s, PageUp/PageDown or the side arrows go to the previous/next video, F = full screen.
-const vid = $('.stage video');
-const VIDEO = /\.(mp4|mov|m4v|webm|mkv|ogv)$/i;
-const isVid = (it) => !!it && VIDEO.test(it.n);
-const videoMode = () => document.body.classList.contains('video');
-vid.addEventListener('error', () => { if (vid.getAttribute('src')) toast('This video format can’t play here — Enter opens it in your default app'); });
-
 function toast(t) { toastEl.textContent = t; toastEl.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('on'), 1600); }
 const cur = () => list[i];
 const src = (it) => fileUrl(it.p) + (bust ? `?v=${bust}` : '');
 
 function warm(k) {
   const it = list[k];
-  if (!it || isVid(it) || preload.has(it.p)) return;
+  if (!it || preload.has(it.p)) return;
   const im = new Image(); im.src = src(it); preload.set(it.p, im);
   if (preload.size > 12) preload.delete(preload.keys().next().value);
 }
@@ -56,8 +48,7 @@ const zoomed = () => scale > fit * 1.01;
 function renderInfo() {
   const it = cur();
   if (!it || !info.classList.contains('on')) return;
-  const [w, h] = videoMode() ? [vid.videoWidth, vid.videoHeight] : [img.naturalWidth, img.naturalHeight];
-  info.innerHTML = `<div><b>Name</b>${it.n.replace(/</g, '&lt;')}</div><div><b>Dimensions</b>${w} × ${h}</div>`
+  info.innerHTML = `<div><b>Name</b>${it.n.replace(/</g, '&lt;')}</div><div><b>Dimensions</b>${img.naturalWidth} × ${img.naturalHeight}</div>`
     + (it.s ? `<div><b>Size</b>${fmtSize(it.s)}</div>` : '') + (it.m ? `<div><b>Modified</b>${fmtDate(it.m)}</div>` : '')
     + `<div><b>Folder</b>${it.p.slice(0, it.p.length - it.n.length).replace(/[\\/]$/, '').replace(/</g, '&lt;')}</div>`;
 }
@@ -65,19 +56,9 @@ function renderInfo() {
 function show() {
   const it = cur();
   if (!it) return;
-  document.body.classList.toggle('video', isVid(it));
-  if (isVid(it)) {
-    img.removeAttribute('src');
-    vid.onloadedmetadata = renderInfo;
-    vid.src = fileUrl(it.p);
-    vid.play().catch(() => {});
-    vid.focus();
-  } else {
-    if (vid.getAttribute('src')) { vid.pause(); vid.removeAttribute('src'); vid.load(); }
-    img.onload = () => { fitNow(); renderInfo(); };
-    img.onerror = () => { img.onerror = null; img.src = `thumb://t/?p=${encodeURIComponent(it.p)}&s=512&m=${it.m}`; }; // HEIC/TIFF: Windows' preview
-    img.src = src(it);
-  }
+  img.onload = () => { fitNow(); renderInfo(); };
+  img.onerror = () => { img.onerror = null; img.src = `thumb://t/?p=${encodeURIComponent(it.p)}&s=512&m=${it.m}`; }; // HEIC/TIFF: Windows' preview
+  img.src = src(it);
   nameEl.textContent = it.n;
   countEl.textContent = `${i + 1} / ${list.length}`;
   document.title = `${it.n} — Foldernator`;
@@ -143,21 +124,6 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (document.body.classList.contains('cropping')) { if (k === 'Escape') { e.preventDefault(); cropEnd(); } else if (k === 'Enter') { e.preventDefault(); cropApply(); } return; }
-  if (videoMode()) {
-    const keys = {
-      Escape: () => (document.fullscreenElement ? document.exitFullscreen() : menu.classList.contains('on') ? menu.classList.remove('on') : window.close()),
-      ' ': () => (vid.paused ? vid.play().catch(() => {}) : vid.pause()),
-      ArrowRight: () => { vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + 5); },
-      ArrowLeft: () => { vid.currentTime = Math.max(0, vid.currentTime - 5); },
-      PageDown: () => go(1), PageUp: () => go(-1),
-      f: () => (document.fullscreenElement ? document.exitFullscreen() : vid.requestFullscreen().catch(() => {})),
-      m: () => { vid.muted = !vid.muted; },
-      i: actions.info, Delete: del, Enter: () => { vid.pause(); api.open(cur().p); },
-    };
-    const fn = keys[k.length === 1 ? k.toLowerCase() : k] || keys[k];
-    if (fn && !ctrl) { e.preventDefault(); fn(); }
-    return;
-  }
   if (k === 'Escape') { e.preventDefault(); if (menu.classList.contains('on')) menu.classList.remove('on'); else if (zoomed()) fitNow(); else window.close(); }
   else if (k === ' ') { e.preventDefault(); window.close(); }
   else if (ctrl && (k === 'r' || k === 'R')) { e.preventDefault(); transform('right'); }
@@ -179,7 +145,6 @@ document.addEventListener('keydown', (e) => {
 });
 let wheelAt = 0;
 stage.addEventListener('wheel', (e) => {
-  if (videoMode()) return; // the player keeps its own wheel/scroll behaviour
   e.preventDefault();
   if (document.body.classList.contains('cropping') || mark) return;
   zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); // the wheel zooms at the cursor (like Photos); ← → change image
