@@ -87,6 +87,14 @@ def _keep_result(r, sens: str) -> bool:
     return not (r.malware_class == "SUSPECT" and r.confidence == "LOW")  # balanced
 MAX_RESULTS = 1000
 LIMITS = {"quick": 4000, "full": 20000, "custom": 20000}
+# Scan speed tiers (faster = fewer/smaller files read less deeply, so a more surface-level pass).
+# read_bytes = how much of each file to read; max_file_mb = skip files larger than this; archives
+# = look inside zips/apks; quick_limit = file cap for a Quick scan at this tier.
+DEPTH = {
+    "fast":     {"read_bytes":  8_000_000, "max_file_mb": 25,   "archives": False, "quick_limit":  2500},
+    "balanced": {"read_bytes": 64_000_000, "max_file_mb": None, "archives": True,  "quick_limit":  4000},
+    "thorough": {"read_bytes": 64_000_000, "max_file_mb": None, "archives": True,  "quick_limit": 20000},
+}
 NOISE_DIRS = {"node_modules", ".git", ".venv", "venv", "__pycache__", "$recycle.bin",
               ".cache", ".gradle", ".nuget", ".cargo", "site-packages"}
 
@@ -154,7 +162,7 @@ def quick_targets() -> list[Path]:
 
 def _targets(mode: str, target: str):
     if mode == "quick":
-        return quick_targets(), "Quick scan · high-risk locations", False
+        return quick_targets(), "Quick scan · high-risk locations", True
     if mode == "full":
         return [_profile()], f"Full scan · {_profile()}", True
     root = Path(target).expanduser()
@@ -188,12 +196,15 @@ def _result_dict(r) -> dict:
 
 
 # ---------------------------------------------------------------- background scan jobs
-def start_job(mode: str, target: str, quarantine: bool) -> str:
+def start_job(mode: str, target: str, quarantine: bool, depth: str = "balanced") -> str:
+    if depth not in DEPTH:
+        depth = "balanced"
     jid = uuid.uuid4().hex[:12]
-    JOBS[jid] = {"state": "running", "mode": mode, "scanned": 0, "flagged": 0,
-                 "counts": {"MALICIOUS": 0, "SUSPICIOUS": 0, "CLEAN": 0},
-                 "root": "", "elapsed": 0.0, "results": [], "truncated": False, "error": None}
-    threading.Thread(target=_run_job, args=(jid, mode, target, quarantine), daemon=True).start()
+    JOBS[jid] = {"state": "running", "mode": mode, "depth": depth, "scanned": 0, "flagged": 0,
+                 "skipped": 0, "counts": {"MALICIOUS": 0, "SUSPICIOUS": 0, "CLEAN": 0},
+                 "root": "", "started": time.time(), "elapsed": 0.0,
+                 "results": [], "truncated": False, "error": None}
+    threading.Thread(target=_run_job, args=(jid, mode, target, quarantine, depth), daemon=True).start()
     # keep only the most recent few jobs
     for old in list(JOBS)[:-6]:
         if JOBS[old]["state"] != "running":
@@ -201,7 +212,7 @@ def start_job(mode: str, target: str, quarantine: bool) -> str:
     return jid
 
 
-def _run_job(jid: str, mode: str, target: str, quarantine: bool) -> None:
+def _run_job(jid: str, mode: str, target: str, quarantine: bool, depth: str = "balanced") -> None:
     global _last_scan
     job = JOBS[jid]
     s = get_scanner()
@@ -211,11 +222,23 @@ def _run_job(jid: str, mode: str, target: str, quarantine: bool) -> None:
         job["state"] = "error"
         job["error"] = label
         return
-    limit = LIMITS.get(mode, LIMITS["custom"])
+    prof = DEPTH.get(depth, DEPTH["balanced"])
+    limit = prof["quick_limit"] if mode == "quick" else LIMITS.get(mode, LIMITS["custom"])
+    max_file = (prof["max_file_mb"] or 0) * 1_000_000   # 0 = no size skip
     settings = load_settings()
     sens = settings.get("sensitivity", "balanced")
     excl = settings.get("exclusions", [])
     qdir = s.quarantine_dir.resolve()
+    # Bulk disk scan: fast, deterministic LOCAL engine only (signatures, heuristics, archives,
+    # YARA when present). VirusTotal's free tier is one lookup per ~15 s, so a per-file online
+    # check would turn a scan of thousands of files into hours. The online check stays on the
+    # interactive paths — a dropped file, a single-file scan, Safe Install — where one file is
+    # worth the wait. (A paid key with VT_MIN_INTERVAL=0 could re-enable it here later.)
+    # The chosen speed tier sets how much of each file we read and whether we open archives.
+    knobs_prev = (s.vt_policy, s.max_scan_bytes, s.scan_archives)
+    s.vt_policy = "off"
+    s.max_scan_bytes = prof["read_bytes"]
+    s.scan_archives = prof["archives"]
     t0 = time.time()
     results = []
     try:
@@ -225,6 +248,13 @@ def _run_job(jid: str, mode: str, target: str, quarantine: bool) -> None:
                 if job["scanned"] >= limit:
                     job["truncated"] = True
                     break
+                if max_file:   # Fast tier: skip big files (large media isn't the quick-scan threat)
+                    try:
+                        if p.stat().st_size > max_file:
+                            job["skipped"] += 1
+                            continue
+                    except OSError:
+                        pass
                 r = s.scan_file(p)
                 job["scanned"] += 1
                 job["counts"][r.verdict] = job["counts"].get(r.verdict, 0) + 1
@@ -250,10 +280,13 @@ def _run_job(jid: str, mode: str, target: str, quarantine: bool) -> None:
     except Exception as e:  # pragma: no cover
         job["state"] = "error"
         job["error"] = str(e)
+    finally:
+        s.vt_policy, s.max_scan_bytes, s.scan_archives = knobs_prev
 
 
 def scan_one_bytes(data: bytes, name: str) -> dict:
     s = get_scanner()
+    s.vt_policy = "all"  # a single dropped file: the full online check is worth the wait
     r = s.scan_bytes(data, name or "dropped.bin")
     return _result_dict(r)
 
@@ -433,9 +466,11 @@ class Handler(BaseHTTPRequestHandler):
             if not job:
                 self._json({"error": "unknown job"}, 404)
                 return
-            snap = {k: job[k] for k in ("state", "mode", "scanned", "flagged", "counts",
-                                        "root", "elapsed", "truncated", "error")}
-            if job["state"] == "done":
+            snap = {k: job[k] for k in ("state", "mode", "depth", "scanned", "flagged", "skipped",
+                                        "counts", "root", "elapsed", "truncated", "error")}
+            if job["state"] == "running":   # live elapsed so the UI can show a running timer
+                snap["elapsed"] = round(time.time() - job.get("started", time.time()), 1)
+            elif job["state"] == "done":
                 snap["results"] = job["results"]
             self._json(snap)
         elif u.path == "/api/schedule":
@@ -496,7 +531,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 self._json({"error": "bad request"}, 400); return
             jid = start_job((req.get("mode") or "custom").lower(),
-                            (req.get("path") or "").strip(), bool(req.get("quarantine")))
+                            (req.get("path") or "").strip(), bool(req.get("quarantine")),
+                            (req.get("depth") or "balanced").lower())
             self._json({"job_id": jid})
         elif u.path == "/api/scan_bytes":
             data = self._body()

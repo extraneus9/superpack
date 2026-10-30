@@ -79,6 +79,25 @@
   .btn:hover{transform:translateY(-1px)} .btn:disabled{opacity:.5;cursor:default;box-shadow:none;transform:none}
   .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);box-shadow:none}
   label.chk{color:var(--dim);font-size:13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:16px}
+  .speed{display:inline-flex;gap:0;margin:0 auto 10px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:11px;padding:3px}
+  .speed button{background:transparent;color:var(--dim);border:0;border-radius:8px;padding:8px 18px;
+    font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,color .15s}
+  .speed button:hover{color:var(--txt)}
+  .speed button.on{background:var(--red);color:#fff;box-shadow:0 2px 10px rgba(229,9,20,.3)}
+  .speedhint{color:var(--dim);font-size:12px;margin:0 auto 20px;max-width:440px;min-height:16px}
+  .score{display:flex;align-items:center;gap:18px;padding:15px 18px;border-radius:12px;margin-bottom:16px;
+    border:1px solid var(--line);background:var(--panel2)}
+  .score.good{border-color:rgba(58,209,127,.45);background:linear-gradient(90deg,rgba(58,209,127,.10),transparent 70%)}
+  .score.warn{border-color:rgba(245,165,36,.45);background:linear-gradient(90deg,rgba(245,165,36,.10),transparent 70%)}
+  .score.bad{border-color:rgba(229,9,20,.5);background:linear-gradient(90deg,rgba(229,9,20,.12),transparent 70%)}
+  .scoreing{display:flex;align-items:baseline;gap:2px;min-width:96px}
+  .scorenum{font-size:46px;font-weight:800;line-height:1}
+  .score.good .scorenum{color:var(--green)} .score.warn .scorenum{color:var(--amber)} .score.bad .scorenum{color:var(--red2)}
+  .scoreof{font-size:15px;color:var(--dim);font-weight:600}
+  .scorestatus{font-size:17px;font-weight:700}
+  .scoreline{color:var(--txt);font-size:13px;margin-top:3px}
+  .scorepost{color:var(--dim);font-size:12px;margin-top:4px}
   /* ---------- progress ---------- */
   .prog{margin-top:8px}
   .pbar{height:8px;border-radius:6px;background:var(--panel2);overflow:hidden;position:relative}
@@ -317,6 +336,12 @@
       <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
       <div class="big">Quick Scan</div>
       <p>Checks the places threats hide first: Downloads, Desktop, Documents, Temp and Startup. Fast and light.</p>
+      <div class="speed" id="speed-quick">
+        <button type="button" data-depth="fast" onclick="pickDepth('quick',this)">Fast</button>
+        <button type="button" data-depth="balanced" class="on" onclick="pickDepth('quick',this)">Balanced</button>
+        <button type="button" data-depth="thorough" onclick="pickDepth('quick',this)">Thorough</button>
+      </div>
+      <div class="speedhint" id="speedhint-quick">Balanced — reads every file and looks inside archives.</div>
       <button class="btn" onclick="startScan('quick','quick')">Start Quick Scan</button>
       <div><label class="chk"><input type="checkbox" id="quar-quick"> quarantine anything malicious</label></div>
     </div>
@@ -589,25 +614,38 @@ async function loadStatus(){
 
 /* ---------- scan with live progress ---------- */
 let jobResults={};
+const DEPTH_HINT={
+  fast:"Fast — skips large files and archives; a quick surface pass of your common files.",
+  balanced:"Balanced — reads every file and looks inside archives.",
+  thorough:"Thorough — deepest pass, scans the most files (slowest)."};
+function pickDepth(tab,btn){
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const h=$('#speedhint-'+tab); if(h) h.textContent=DEPTH_HINT[btn.dataset.depth]||'';
+}
 async function startScan(mode,tab){
   const quar=$('#quar-'+tab)?.checked||false;
   const path=mode==='custom'?$('#path').value.trim():'';
   if(mode==='custom'&&!path) return;
+  const depth=$('#speed-'+tab+' .on')?.dataset.depth||'balanced';
   const out=$('#out-'+tab);
   out.innerHTML=`<div class="card prog">
     <div class="pbar"><i></i></div>
     <div class="pline"><span><span class="spin"></span>Scanning<span id="proot-${tab}"></span></span>
-      <span><b id="pscan-${tab}">0</b> scanned · <b id="pflag-${tab}">0</b> flagged</span></div></div>`;
+      <span><b id="pscan-${tab}">0</b> scanned · <b id="pflag-${tab}">0</b> flagged · <b id="ptime-${tab}">0s</b></span></div></div>`;
   let r=await (await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({mode,path,quarantine:quar})})).json();
+    body:JSON.stringify({mode,path,quarantine:quar,depth})})).json();
   if(r.error||!r.job_id){out.innerHTML=`<div class="card empty">${r.error||'could not start scan'}</div>`;return;}
   poll(r.job_id,tab);
 }
 async function poll(jid,tab){
-  const d=await (await fetch('/api/progress?job='+jid)).json();
+  let d;
+  try{ d=await (await fetch('/api/progress?job='+jid)).json(); }
+  catch(e){ setTimeout(()=>poll(jid,tab),700); return; }  // transient network hiccup — retry, don't crash
   if(d.error){$('#out-'+tab).innerHTML=`<div class="card empty">${d.error}</div>`;return;}
   if($('#pscan-'+tab)) $('#pscan-'+tab).textContent=d.scanned;
   if($('#pflag-'+tab)) $('#pflag-'+tab).textContent=d.flagged;
+  if($('#ptime-'+tab)) $('#ptime-'+tab).textContent=fmtDur(d.elapsed);
   if($('#proot-'+tab)&&d.root) $('#proot-'+tab).textContent=' · '+shorten(d.root);
   if(d.state==='running'){setTimeout(()=>poll(jid,tab),350);return;}
   if(d.state==='error'){$('#out-'+tab).innerHTML=`<div class="card empty">Scan failed: ${d.error}</div>`;return;}
@@ -615,9 +653,44 @@ async function poll(jid,tab){
   renderScan(tab,d,jid);
 }
 function shorten(p){return p.length>46?'…'+p.slice(-44):p;}
-function renderScan(tab,d,jid){
+function fmtDur(s){s=Math.max(0,Math.round(s||0));if(s<60)return s+'s';const m=Math.floor(s/60),r=s%60;return m+'m '+String(r).padStart(2,'0')+'s';}
+function scanScore(d,st){
+  const c=d.counts||{}, sys=(st&&st.system)||{}, prot=(st&&st.protection)||{};
+  const mal=(d.results||[]).filter(r=>r.verdict==='MALICIOUS').length;
+  const sus=Math.max(0,(d.flagged||0)-mal);
+  let s=100;
+  s-=mal*35;                 // a real threat is serious
+  s-=Math.min(20,sus*5);     // things to review, capped
+  if(sys.defender===false) s-=20;
+  if(sys.firewall===false) s-=10;
+  if(prot.running===false) s-=8;
+  s=Math.max(0,Math.min(100,Math.round(s)));
+  let status,tone;
+  if(mal>0){status='Action needed';tone='bad';}
+  else if(s>=90){status='Protected';tone='good';}
+  else if(s>=70){status='Looking good';tone='good';}
+  else if(s>=50){status='Review suggested';tone='warn';}
+  else{status='Action needed';tone='bad';}
+  const parts=[`${(d.scanned||0).toLocaleString()} file${d.scanned===1?'':'s'} checked`];
+  if(mal) parts.push(`<b style="color:var(--red2)">${mal} threat${mal>1?'s':''}</b>`);
+  if(sus) parts.push(`${sus} to review`);
+  parts.push(`${(c.CLEAN||0).toLocaleString()} clean`);
+  const post=[];
+  if(sys.defender===true||sys.defender===false) post.push('Defender '+(sys.defender?'on':'off'));
+  if(sys.firewall===true||sys.firewall===false) post.push('Firewall '+(sys.firewall?'on':'off'));
+  post.push('Real-time guard '+(prot.running?'on':'off'));
+  return {score:s,status,tone,line:parts.join(' · '),posture:post.join(' · ')};
+}
+async function renderScan(tab,d,jid){
+  let st=null; try{ st=await (await fetch('/api/status')).json(); }catch(e){}
+  const sc=scanScore(d,st);
   const c=d.counts||{};
   $('#out-'+tab).innerHTML=`<div class="card">
+    <div class="score ${sc.tone}">
+      <div class="scoreing"><div class="scorenum">${sc.score}</div><div class="scoreof">/100</div></div>
+      <div class="scoremeta"><div class="scorestatus">${sc.status}</div>
+        <div class="scoreline">${sc.line}</div>
+        <div class="scorepost">${sc.posture}</div></div></div>
     <div class="stats">
       <div class="stat"><div class="v">${d.scanned}</div><div class="k">scanned</div></div>
       <div class="stat mal"><div class="v">${c.MALICIOUS||0}</div><div class="k">malicious</div></div>
@@ -628,7 +701,7 @@ function renderScan(tab,d,jid){
       <button data-f="MALICIOUS">Malicious</button><button data-f="SUSPICIOUS">Suspicious</button>
       ${jid?`<a class="op" style="margin-left:auto" href="/api/report?id=${jid}&fmt=csv" download>Export CSV</a><a class="op" href="/api/report?id=${jid}&fmt=pdf" download>Export PDF</a>`:''}</div>
     <div id="rl-${tab}"></div>
-    <div class="note">${d.root} · ${d.elapsed}s${d.truncated?' · stopped at file limit':''}</div></div>`;
+    <div class="note">${d.root} · ${d.scanned} files in ${fmtDur(d.elapsed)}${d.depth&&d.depth!=='balanced'?' · '+d.depth:''}${d.skipped?` · ${d.skipped} large files skipped`:''}${d.truncated?' · stopped at file limit':''}</div></div>`;
   $('#out-'+tab).querySelectorAll('.filters button').forEach(b=>b.onclick=()=>{
     $('#out-'+tab).querySelectorAll('.filters button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');renderList(tab,b.dataset.f);});
@@ -677,7 +750,7 @@ async function loadSchedule(){
     ?`On — last: ${s.last_run||'not yet'}${s.next_run?' · next: '+new Date(s.next_run*1000).toLocaleString():''}`
     :'Off';
   $('#schHistory').innerHTML=(s.history&&s.history.length)
-    ? s.history.map(h=>`${h.when} · ${ICON_MODE[h.mode]||h.mode} · ${h.scanned} scanned · ${h.flagged} flagged`).join('<br>')
+    ? s.history.map(h=>`${h.when} · ${ICON_MODE[h.mode]||h.mode} · ${h.scanned} scanned · ${h.flagged} flagged · ${fmtDur(h.elapsed)}`).join('<br>')
     : 'None yet.';
 }
 async function saveSchedule(){
@@ -702,7 +775,7 @@ async function loadHistory(){
     <div class="meta">
       <div><b>${ICON_MODE[e.mode]||e.mode} scan</b> · ${e.when}</div>
       <div class="qpath">${e.root}</div>
-      <div class="conf">${e.scanned} scanned · <span style="color:var(--red2)">${c.MALICIOUS||0} mal</span> · <span style="color:var(--amber)">${c.SUSPICIOUS||0} sus</span> · ${e.flagged} flagged · ${e.elapsed}s</div></div>
+      <div class="conf">${e.scanned} scanned · <span style="color:var(--red2)">${c.MALICIOUS||0} mal</span> · <span style="color:var(--amber)">${c.SUSPICIOUS||0} sus</span> · ${e.flagged} flagged · ${fmtDur(e.elapsed)}</div></div>
     <a class="op" href="/api/report?id=${e.id}&fmt=csv" download>CSV</a>
     <a class="op" href="/api/report?id=${e.id}&fmt=pdf" download>PDF</a></div>`;}).join('');
 }

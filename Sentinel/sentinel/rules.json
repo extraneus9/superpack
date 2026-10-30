@@ -22,7 +22,7 @@
     { "name": "secret_private_key", "severity": "SUSPICIOUS", "mitre": "dlp", "desc": "Exposed private key",
       "regex": "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", "sample_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t" },
     { "name": "secret_aws_key", "severity": "SUSPICIOUS", "mitre": "dlp", "desc": "Exposed AWS access key id",
-      "regex": "AKIA[0-9A-Z]{16}", "sample_b64": "QUtJQUlPU0ZPRE5ON0VYQU1QTEU=" },
+      "regex": "(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])", "sample_b64": "QUtJQUlPU0ZPRE5ON0VYQU1QTEU=" },
     { "name": "secret_github_pat", "severity": "SUSPICIOUS", "mitre": "dlp", "desc": "Exposed GitHub token",
       "regex": "gh[pousr]_[A-Za-z0-9]{36}", "sample_b64": "Z2hwX0FBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQ==" },
 
@@ -64,9 +64,6 @@
       "regex": "etweventwrite|ntdll[^\\n]{0,20}etwp", "sample": "EtwEventWrite patch" },
     { "name": "evasion_amsi", "severity": "MALICIOUS", "mitre": "defense-evasion", "desc": "AMSI bypass markers",
       "regex": "amsiutils|amsiinitfailed|amsicontext", "sample": "AmsiUtils" },
-    { "name": "evasion_bypass_policy", "severity": "SUSPICIOUS", "mitre": "defense-evasion", "desc": "PowerShell execution-policy bypass",
-      "regex": "-ep\\s+bypass|executionpolicy\\s+bypass", "sample": "powershell -ExecutionPolicy Bypass" },
-
     { "name": "impact_bcdedit_recovery", "severity": "MALICIOUS", "mitre": "impact", "desc": "disables Windows recovery",
       "regex": "bcdedit(\\.exe)?\\s+/set[^\\n]{0,40}recoveryenabled\\s+no", "sample": "bcdedit /set {default} recoveryenabled no" },
     { "name": "impact_wbadmin_delete", "severity": "MALICIOUS", "mitre": "impact", "desc": "deletes system backups",

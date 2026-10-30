@@ -48,6 +48,15 @@ else:  # linux
     TRUSTED_ROOTS = ("/usr/", "/bin/", "/sbin/", "/lib/")
     USER_WRITABLE = ("/home/", "/tmp/", "/var/tmp/", "/downloads/", "/desktop/", "/documents/")
 
+# Shared interpreters and runtimes. When a malicious *script* runs, the attacking process is one of
+# these, but the binary itself belongs to the user (Python, Node, Java…). We still kill the process
+# to stop the attack, but we NEVER quarantine the interpreter — moving it would break every other
+# program that relies on it. The malicious script in the watched folder is quarantined on its own
+# by the file scan.
+INTERPRETER_EXES = {"python.exe", "pythonw.exe", "py.exe", "node.exe", "powershell.exe", "pwsh.exe",
+                    "wscript.exe", "cscript.exe", "java.exe", "javaw.exe", "ruby.exe", "perl.exe",
+                    "dotnet.exe", "python", "python3", "node", "java", "ruby", "perl"}
+
 
 def find_culprits(folder, since: float = 0.0, exclude_pids=()) -> list:
     """Return [(pid, name, exe, why), ...] of processes likely attacking `folder`.
@@ -92,9 +101,14 @@ def neutralize(folder, scanner=None, since: float = 0.0, exclude_pids=()) -> dic
             seen_exes.add(exe.lower())
             try:
                 res = scanner.scan_file(Path(exe))
-                scanner.quarantine(res)
-                if res.quarantined_to:
-                    quarantined.append(Path(exe).name)
+                # Only quarantine a genuinely bad STANDALONE executable. Never a clean binary (the
+                # kill already stopped the attack) and never a shared interpreter — moving python.exe
+                # or node.exe would break the whole system. A script-based attacker's malicious
+                # script is quarantined separately by the watched-folder file scan.
+                if res.verdict != "CLEAN" and Path(exe).name.lower() not in INTERPRETER_EXES:
+                    scanner.quarantine(res)
+                    if res.quarantined_to:
+                        quarantined.append(Path(exe).name)
             except Exception:
                 pass
     return {"killed": killed, "quarantined": quarantined, "why": why}

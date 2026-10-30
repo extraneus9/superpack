@@ -10,10 +10,13 @@ Set-Location $proj
 function Find-BuildPython {
   $cands = @()
   if ($env:SENTINEL_PY) { $cands += $env:SENTINEL_PY }
+  # Prefer the dedicated pythoncore build env (only Sentinel's own deps) over a full dev Python like
+  # Python310 — a general dev install drags extra packages (e.g. Cryptodome's test suite) into the
+  # bundle, bloating the exe by ~14 MB. pythoncore keeps the one-file build lean and reproducible.
   $cands += @(
-    "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
     "$env:LOCALAPPDATA\Python\pythoncore-3.10-64\python.exe",
-    "$env:LOCALAPPDATA\Python\pythoncore-3.12-64\python.exe"
+    "$env:LOCALAPPDATA\Python\pythoncore-3.12-64\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe"
   )
   $g = Get-Command python -ErrorAction SilentlyContinue
   if ($g -and $g.Source -notlike "*WindowsApps*") { $cands += $g.Source }
