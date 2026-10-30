@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M2 24C10 11 38 11 46 24 38 37 10 37 2 24Z' fill='%23090909' stroke='%23ff3b45' stroke-width='2.4'/%3E%3Ccircle cx='24' cy='24' r='10' fill='%23ff5a1f'/%3E%3Ccircle cx='24' cy='24' r='10' fill='%23e50914' opacity='.45'/%3E%3Cellipse cx='24' cy='24' rx='2.8' ry='9' fill='%23090909'/%3E%3Ccircle cx='20.5' cy='20.5' r='1.7' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#08080a; --bg2:#0e0e11; --panel:#141418; --panel2:#1c1c22; --line:#26262e;
+    --txt:#f4f4f6; --dim:#9a9aa7; --faint:#6a6a76;
+    --red:#e50914; --red2:#ff3b45; --amber:#f5a524; --green:#3ad17f; --blue:#5a9cff;
+    --radius:16px; --mono:"SFMono-Regular",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  html,body{margin:0;overflow-x:hidden;max-width:100%}
+  /* polished, quiet scrollbar */
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#2c2c34;border:3px solid var(--bg);border-radius:8px}
+  ::-webkit-scrollbar-thumb:hover{background:#3a3a44}
+  *{scrollbar-width:thin;scrollbar-color:#2c2c34 transparent}
+  body{background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(229,9,20,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 0%, rgba(90,156,255,.05), transparent 55%),
+      var(--bg);
+    color:var(--txt);font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5;
+    min-height:100vh}
+  a{color:inherit}
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:16px;padding:16px 26px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(20,20,24,.9),rgba(8,8,10,.6));backdrop-filter:blur(8px);
+    position:sticky;top:0;z-index:20}
+  .logo{display:flex;align-items:center;gap:12px}
+  .eye{width:40px;height:40px;flex:0 0 auto;filter:drop-shadow(0 2px 10px rgba(229,9,20,.5))}
+  .brand{display:flex;flex-direction:column;line-height:1}
+  .brand .n{font-weight:900;letter-spacing:.16em;font-size:19px}
+  .brand .by{font-family:Caveat,cursive;font-size:16px;color:var(--red2);margin-top:2px;letter-spacing:.02em}
+  .badges{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 13px;
+    font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .badge .n{color:var(--txt);font-weight:700}
+  .badge.on{border-color:#2e6b4e;color:var(--green)} .badge.off{color:var(--faint)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  /* ---------- tabs ---------- */
+  nav.tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);
+    background:var(--bg2);overflow-x:auto;position:sticky;top:67px;z-index:19;
+    scrollbar-width:none;-ms-overflow-style:none}
+  nav.tabs::-webkit-scrollbar{display:none}
+  .tab{padding:14px 13px;font-weight:600;font-size:13.5px;color:var(--dim);cursor:pointer;
+    border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:7px}
+  .tab:hover{color:var(--txt)}
+  .tab.active{color:#fff;border-bottom-color:var(--red)}
+  .tab svg{width:16px;height:16px}
+  main{max-width:1120px;margin:0 auto;padding:24px 22px 60px}
+  .panel{display:none;animation:fade .25s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* ---------- cards ---------- */
+  .card{background:linear-gradient(180deg,var(--panel),#101014);border:1px solid var(--line);
+    border-radius:var(--radius);padding:20px}
+  .card + .card{margin-top:16px}
+  .h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  /* ---------- hero scan ---------- */
+  .hero{text-align:center;padding:34px 20px}
+  .hero .big{font-size:26px;font-weight:800;margin:14px 0 6px}
+  .hero p{color:var(--dim);margin:0 auto 22px;max-width:440px}
+  .ring{width:96px;height:96px;margin:0 auto;border-radius:50%;display:grid;place-items:center;
+    background:radial-gradient(circle,rgba(229,9,20,.14),transparent 70%);border:1px solid var(--line)}
+  .ring svg{width:48px;height:48px;color:var(--red2)}
+  .btn{background:var(--red);color:#fff;border:0;border-radius:12px;padding:13px 28px;font-weight:700;
+    font-size:15px;cursor:pointer;transition:transform .1s,box-shadow .2s;box-shadow:0 6px 20px rgba(229,9,20,.3)}
+  .btn:hover{transform:translateY(-1px)} .btn:disabled{opacity:.5;cursor:default;box-shadow:none;transform:none}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);box-shadow:none}
+  label.chk{color:var(--dim);font-size:13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:16px}
+  /* ---------- progress ---------- */
+  .prog{margin-top:8px}
+  .pbar{height:8px;border-radius:6px;background:var(--panel2);overflow:hidden;position:relative}
+  .pbar i{position:absolute;left:-40%;width:40%;height:100%;border-radius:6px;
+    background:linear-gradient(90deg,transparent,var(--red2),transparent);animation:slide 1.1s infinite}
+  @keyframes slide{to{left:100%}}
+  .pline{display:flex;justify-content:space-between;color:var(--dim);font-size:13px;margin-top:10px}
+  .pline b{color:var(--txt)}
+  /* ---------- stats ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}
+  @media(max-width:540px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .stat .v{font-size:24px;font-weight:800} .stat .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  .stat.mal .v{color:var(--red2)} .stat.sus .v{color:var(--amber)} .stat.cln .v{color:var(--green)}
+  /* ---------- results ---------- */
+  .filters{display:flex;gap:8px;margin:4px 0 12px;flex-wrap:wrap}
+  .filters button{background:var(--panel2);color:var(--dim);border:1px solid var(--line);padding:6px 13px;
+    font-weight:600;font-size:12px;border-radius:8px;cursor:pointer}
+  .filters button.active{background:var(--red);color:#fff;border-color:var(--red)}
+  .res{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--panel2)}
+  .res summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;flex-wrap:wrap}
+  .res summary::-webkit-details-marker{display:none}
+  .chip{font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:6px}
+  .chip.MALICIOUS{background:rgba(229,9,20,.16);color:#ff6b73;border:1px solid rgba(229,9,20,.4)}
+  .chip.SUSPICIOUS{background:rgba(245,165,36,.14);color:var(--amber);border:1px solid rgba(245,165,36,.4)}
+  .cls{font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:6px;
+    background:#26262d;color:#cfcfe0;border:1px solid var(--line)}
+  .cls.MALWARE{background:rgba(229,9,20,.14);color:#ff8089} .cls.PUA{background:rgba(245,165,36,.12);color:var(--amber)}
+  .cls.TEST{background:rgba(58,209,127,.12);color:var(--green)} .cls.POLICY{background:rgba(90,156,255,.14);color:var(--blue)}
+  .cat{font-size:12px;color:#d2d2de} .conf{font-size:11px;color:var(--faint)}
+  .fname{font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--dim);flex-basis:100%}
+  .findings{padding:0 14px 13px;display:flex;flex-direction:column;gap:5px}
+  .rationale{font-size:12px;color:var(--dim);font-style:italic;margin-bottom:4px}
+  .finding{font-family:var(--mono);font-size:11px;color:var(--faint)} .finding b{color:var(--txt);font-weight:600}
+  .empty{color:var(--dim);text-align:center;padding:26px 0}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;
+    border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* ---------- catalog ---------- */
+  .layer{border-bottom:1px solid var(--line)}
+  .layer:last-child{border:0}
+  .layer summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 2px}
+  .layer summary::-webkit-details-marker{display:none}
+  .bar{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden;flex:0 0 90px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--red2))}
+  .layer .cnt{margin-left:auto;font-weight:800}
+  .techs{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 12px}
+  .tech{font-family:var(--mono);font-size:11px;color:var(--dim);background:var(--panel2);border:1px solid var(--line);
+    border-radius:6px;padding:3px 7px}
+  .total{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .total .big{font-size:40px;font-weight:900}
+  /* ---------- custom / dropzone ---------- */
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:38px 20px;text-align:center;
+    transition:border-color .2s,background .2s;cursor:pointer}
+  .drop.over{border-color:var(--red);background:rgba(229,9,20,.06)}
+  .drop svg{width:40px;height:40px;color:var(--faint);margin-bottom:10px}
+  .drop .t{font-weight:700;font-size:16px} .drop .s{color:var(--dim);font-size:13px;margin-top:4px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  input[type=text]{flex:1;min-width:200px;background:#0b0b0e;border:1px solid var(--line);color:var(--txt);
+    border-radius:11px;padding:12px 14px;font-family:var(--mono);font-size:13px}
+  input[type=text]:focus{outline:none;border-color:var(--red)}
+  .sep{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:12px;margin:18px 0}
+  .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
+  /* ---------- schedule ---------- */
+  .switch{position:relative;width:48px;height:26px;flex:0 0 auto}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    cursor:pointer;transition:.2s}
+  .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;
+    background:var(--faint);transition:.2s}
+  .switch input:checked + .slider{background:rgba(58,209,127,.25);border-color:var(--green)}
+  .switch input:checked + .slider::before{transform:translateX(22px);background:var(--green)}
+  .field{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .field:last-child{border:0}
+  .field .lab{font-weight:600} .field .sub{color:var(--dim);font-size:12px}
+  select{background:#0b0b0e;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:9px 12px;font-size:13px}
+  .hist{font-size:12px;color:var(--dim);font-family:var(--mono)}
+  .note{color:var(--dim);font-size:12px;margin-top:12px}
+  /* ---------- quarantine / settings ---------- */
+  .qitem,.exitem{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:12px;background:var(--panel2);margin-bottom:8px;flex-wrap:wrap}
+  .qitem .meta{flex:1;min-width:180px;display:flex;flex-direction:column;gap:4px}
+  .qpath{font-family:var(--mono);font-size:11px;color:var(--faint);word-break:break-all}
+  .op{font-size:12px;font-weight:600;color:var(--dim);background:#0b0b0e;border:1px solid var(--line);
+    border-radius:9px;padding:8px 13px;cursor:pointer}
+  .op.restore:hover{color:var(--green);border-color:#2e6b4e}
+  .op.del:hover,.exitem .op:hover{color:var(--red2);border-color:var(--red)}
+  .segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:620px){.segmented{grid-template-columns:1fr}}
+  .segmented button{text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    padding:14px;cursor:pointer;color:var(--dim);display:flex;flex-direction:column;gap:5px}
+  .segmented button b{color:var(--txt);font-size:15px}.segmented button span{font-size:12px;line-height:1.35}
+  .segmented button.active{border-color:var(--red);background:#1b1013}
+  /* ---------- dashboard ---------- */
+  .dash-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+  @media(max-width:720px){.dash-tiles{grid-template-columns:repeat(2,1fr)}}
+  .dtile{background:linear-gradient(180deg,var(--panel),#101014);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px}
+  .dtile .dt-v{font-size:30px;font-weight:900;line-height:1}
+  .dtile .dt-v.cln{color:var(--green)} .dtile .dt-v.sus{color:var(--amber)} .dtile .dt-v.mal{color:var(--red2)}
+  .dtile .dt-k{color:var(--dim);font-size:12px;margin-top:8px;text-transform:uppercase;letter-spacing:.05em}
+  .secrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .secrow:last-child{border:0}
+  .sdot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .sdot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .sdot.off{background:var(--red2);box-shadow:0 0 8px rgba(229,9,20,.6)}
+  .sdot.unknown{background:var(--faint)}
+  .qa-row{display:flex;gap:10px;flex-wrap:wrap}
+  /* ---------- intro splash ---------- */
+  #intro{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;cursor:pointer;
+    background:radial-gradient(900px 500px at 50% 38%, rgba(229,9,20,.14), transparent 60%), #070708;
+    transition:opacity .6s ease}
+  #intro.hide{opacity:0;pointer-events:none}
+  .intro-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px}
+  .intro-eye{width:118px;height:118px;animation:introEye 1s cubic-bezier(.2,.9,.2,1) both, introGlow 2.6s ease-in-out 1s infinite}
+  .intro-word{font-weight:900;font-size:clamp(30px,6vw,44px);margin-top:24px;
+    animation:introWord 1s ease .45s both}
+  .intro-by{font-family:Caveat,cursive;color:var(--red2);font-size:26px;margin-top:2px;opacity:0;
+    animation:introFade .6s ease 1s both}
+  .intro-tag{color:var(--dim);font-size:14px;margin-top:18px;max-width:440px;line-height:1.6;opacity:0;
+    transform:translateY(8px);animation:introFade .8s ease 1.35s both}
+  .intro-tag b{color:#fff}
+  .intro-bar{width:210px;height:3px;background:#1a1a20;border-radius:3px;margin-top:28px;overflow:hidden}
+  .intro-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red),var(--red2));
+    animation:introBar 2.7s ease .3s forwards}
+  .intro-skip{color:var(--faint);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:22px;
+    opacity:0;animation:introFade .6s ease 2.2s both}
+  @keyframes introEye{0%{transform:scale(.4) rotate(-6deg);opacity:0}60%{opacity:1}100%{transform:none;opacity:1}}
+  @keyframes introGlow{0%,100%{filter:drop-shadow(0 0 10px rgba(229,9,20,.5))}50%{filter:drop-shadow(0 0 30px rgba(229,9,20,.95))}}
+  @keyframes introWord{0%{opacity:0;letter-spacing:.55em;transform:translateY(10px)}100%{opacity:1;letter-spacing:.2em;transform:none}}
+  @keyframes introFade{to{opacity:1;transform:none}}
+  @keyframes introBar{to{width:100%}}
+  /* ---------- motion polish ---------- */
+  .eye{animation:eyePulse 4.5s ease-in-out infinite}
+  @keyframes eyePulse{0%,100%{filter:drop-shadow(0 2px 10px rgba(229,9,20,.5))}50%{filter:drop-shadow(0 2px 16px rgba(229,9,20,.85))}}
+  .dtile,.card{animation:riseIn .5s ease both}
+  @keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){
+    .intro-eye,.intro-word,.intro-by,.intro-tag,.intro-skip,.intro-bar i,.eye,.dtile,.card{animation:none !important}
+    .intro-by,.intro-tag,.intro-skip{opacity:1}
+  }
+</style>
+</head>
+<body>
+<div id="intro">
+  <div class="intro-inner">
+    <svg class="intro-eye" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <ellipse cx="24" cy="24" rx="23" ry="14" fill="url(#iglow)" opacity=".6"/>
+      <path d="M2 24C10 10.5 38 10.5 46 24 38 37.5 10 37.5 2 24Z" fill="#090909" stroke="#ff3b45" stroke-width="1.4"/>
+      <circle cx="24" cy="24" r="10.5" fill="url(#iiris)"/>
+      <ellipse cx="24" cy="24" rx="2.9" ry="9.2" fill="#070707"/>
+      <circle cx="20.4" cy="20.2" r="1.7" fill="#fff" opacity=".9"/>
+      <defs>
+        <radialGradient id="iiris" cx="42%" cy="40%" r="65%">
+          <stop offset="0" stop-color="#ffe0a0"/><stop offset=".4" stop-color="#ff7a1f"/>
+          <stop offset=".8" stop-color="#e50914"/><stop offset="1" stop-color="#8a0409"/></radialGradient>
+        <radialGradient id="iglow"><stop offset="0" stop-color="#e50914" stop-opacity=".6"/><stop offset="1" stop-color="#e50914" stop-opacity="0"/></radialGradient>
+      </defs>
+    </svg>
+    <div class="intro-word">SENTINEL</div>
+    <div class="intro-by">by alva</div>
+    <div class="intro-tag">Thank you for downloading. Real protection — <b>free, forever</b>. No subscriptions, no catches.</div>
+    <div class="intro-bar"><i></i></div>
+    <div class="intro-skip">click to enter</div>
+  </div>
+</div>
+<header>
+  <div class="logo">
+    <svg class="eye" viewBox="0 0 48 48" fill="none" aria-label="Sentinel">
+      <ellipse cx="24" cy="24" rx="23" ry="14" fill="url(#glow)" opacity=".55"/>
+      <path d="M2 24C10 10.5 38 10.5 46 24 38 37.5 10 37.5 2 24Z" fill="#090909" stroke="#ff3b45" stroke-width="1.6"/>
+      <circle cx="24" cy="24" r="10.5" fill="url(#iris)"/>
+      <circle cx="24" cy="24" r="10.5" fill="none" stroke="#ffb067" stroke-width=".6" opacity=".6"/>
+      <ellipse cx="24" cy="24" rx="2.9" ry="9.2" fill="#070707"/>
+      <circle cx="20.4" cy="20.2" r="1.7" fill="#fff" opacity=".9"/>
+      <defs>
+        <radialGradient id="iris" cx="42%" cy="40%" r="65%">
+          <stop offset="0" stop-color="#ffe0a0"/><stop offset=".4" stop-color="#ff7a1f"/>
+          <stop offset=".8" stop-color="#e50914"/><stop offset="1" stop-color="#8a0409"/>
+        </radialGradient>
+        <radialGradient id="glow"><stop offset="0" stop-color="#e50914" stop-opacity=".55"/><stop offset="1" stop-color="#e50914" stop-opacity="0"/></radialGradient>
+      </defs>
+    </svg>
+    <div class="brand"><span class="n">SENTINEL</span><span class="by">by alva</span></div>
+  </div>
+  <div class="badges" id="badges"></div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <div class="tab active" data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Overview</div>
+  <div class="tab" data-tab="quick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>Quick Scan</div>
+  <div class="tab" data-tab="full"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/></svg>Full Scan</div>
+  <div class="tab" data-tab="custom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h4l2-2h8a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/></svg>Custom</div>
+  <div class="tab" data-tab="safeinstall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/><path d="M12 8v5m0 3h.01"/></svg>Safe Install</div>
+  <div class="tab" data-tab="schedule"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>Schedule</div>
+  <div class="tab" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>History</div>
+  <div class="tab" data-tab="quarantine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v5"/></svg>Quarantine</div>
+  <div class="tab" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1l-.3-2.5H9.4l-.3 2.5a7 7 0 00-1.7 1l-2.3-1-2 3.4 2 1.5a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.3 2.5h4.9l.3-2.5a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5a7 7 0 00.1-1z"/></svg>Settings</div>
+</nav>
+
+<main>
+  <!-- OVERVIEW / DASHBOARD -->
+  <section class="panel active" id="p-overview">
+    <div class="dash-tiles">
+      <div class="dtile"><div class="dt-v" id="tProt">—</div><div class="dt-k">Real-time protection</div></div>
+      <div class="dtile"><div class="dt-v mal" id="tCaught">0</div><div class="dt-k">Threats caught</div></div>
+      <div class="dtile"><div class="dt-v" id="tQuar">0</div><div class="dt-k">In quarantine</div></div>
+      <div class="dtile"><div class="dt-v" id="tLast">—</div><div class="dt-k">Last scan</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><p class="h">System security</p><div id="sysBody"><div class="note" style="margin:0">Checking…</div></div></div>
+      <div class="card"><p class="h">Recent detections</p><div id="recentBody"><div class="note" style="margin:0">Loading…</div></div></div>
+    </div>
+    <div class="card">
+      <p class="h">Quick actions</p>
+      <div class="qa-row">
+        <button class="btn" onclick="gotoScan('quick')">⚡ Quick scan</button>
+        <button class="btn ghost" onclick="gotoScan('full')">🛡 Full scan</button>
+        <button class="btn ghost" onclick="switchTo('custom')">📁 Scan a file</button>
+        <button class="btn ghost" onclick="switchTo('quarantine')">Quarantine</button>
+        <button class="btn ghost" onclick="switchTo('history')">History</button>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="total"><span class="big" id="coreTotal">—</span><div><div style="font-weight:700">core detections</div><div style="color:var(--dim);font-size:12px">+ community YARA + cloud intel</div></div></div>
+        <div id="layers"></div>
+      </div>
+      <div class="card"><p class="h">Engine status</p><div id="statusBody"></div></div>
+    </div>
+  </section>
+
+  <!-- QUICK -->
+  <section class="panel" id="p-quick">
+    <div class="card hero" id="hero-quick">
+      <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
+      <div class="big">Quick Scan</div>
+      <p>Checks the places threats hide first: Downloads, Desktop, Documents, Temp and Startup. Fast and light.</p>
+      <button class="btn" onclick="startScan('quick','quick')">Start Quick Scan</button>
+      <div><label class="chk"><input type="checkbox" id="quar-quick"> quarantine anything malicious</label></div>
+    </div>
+    <div id="out-quick"></div>
+  </section>
+
+  <!-- FULL -->
+  <section class="panel" id="p-full">
+    <div class="card hero" id="hero-full">
+      <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/></svg></div>
+      <div class="big">Full Scan</div>
+      <p>A deep scan of your whole user profile. Skips system caches and the recycle bin. This can take a while — grab a coffee.</p>
+      <button class="btn" onclick="startScan('full','full')">Start Full Scan</button>
+      <div><label class="chk"><input type="checkbox" id="quar-full"> quarantine anything malicious</label></div>
+    </div>
+    <div id="out-full"></div>
+  </section>
+
+  <!-- CUSTOM -->
+  <section class="panel" id="p-custom">
+    <div class="card">
+      <p class="h">Scan a file — drag &amp; drop or browse</p>
+      <div class="drop" id="drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2"/></svg>
+        <div class="t">Drop a file here to scan it</div>
+        <div class="s">or click to browse — nothing leaves your computer</div>
+        <input type="file" id="fileInput" style="display:none">
+      </div>
+      <div class="sep">or scan a folder by path</div>
+      <div class="row">
+        <input id="path" type="text" placeholder="C:\Users\you\Downloads  — folder or file path" spellcheck="false">
+        <button class="btn" onclick="startScan('custom','custom')">Scan</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="quar-custom"> quarantine anything malicious</label>
+    </div>
+    <div id="out-custom"></div>
+  </section>
+
+  <!-- SAFE INSTALL -->
+  <section class="panel" id="p-safeinstall">
+    <div class="card">
+      <p class="h">Safe install</p>
+      <p class="note" style="margin:0 0 14px">Got an installer or a file you want to run? Drop it here first. Sentinel scans it with the full engine + VirusTotal, and only then lets you install it — while real-time protection watches what it does.</p>
+      <div class="drop" id="siDrop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+        <div class="t">Drop an installer or file here to check it</div>
+        <div class="s">or click to browse — it's scanned before anything runs</div>
+        <input type="file" id="siInput" style="display:none">
+      </div>
+      <div id="siOut"></div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="panel" id="p-schedule">
+    <div class="card">
+      <p class="h">Automatic scans</p>
+      <div class="field">
+        <label class="switch"><input type="checkbox" id="schEnabled"><span class="slider"></span></label>
+        <div><div class="lab">Enable scheduled scans</div><div class="sub">Sentinel runs a scan on its own, in the background.</div></div>
+      </div>
+      <div class="field">
+        <div style="flex:1"><div class="lab">How often</div><div class="sub">Pick how frequently it runs.</div></div>
+        <select id="schInterval">
+          <option value="6">Every 6 hours</option>
+          <option value="12">Every 12 hours</option>
+          <option value="24" selected>Every day</option>
+          <option value="168">Every week</option>
+        </select>
+      </div>
+      <div class="field">
+        <div style="flex:1"><div class="lab">Scan type</div><div class="sub">Quick is light; Full is thorough.</div></div>
+        <select id="schMode"><option value="quick" selected>Quick scan</option><option value="full">Full scan</option></select>
+      </div>
+      <div class="field">
+        <div style="flex:1"><div class="lab">Status</div><div class="sub" id="schStatus">—</div></div>
+      </div>
+    </div>
+    <div class="card"><p class="h">Recent automatic scans</p><div id="schHistory" class="hist">None yet.</div></div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="panel" id="p-history">
+    <div class="card">
+      <p class="h">Scan history</p>
+      <p class="note" style="margin:0 0 14px">Every scan is logged here. Export any one as a CSV spreadsheet or a printable PDF report.</p>
+      <div id="histList"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- QUARANTINE -->
+  <section class="panel" id="p-quarantine">
+    <div class="card">
+      <p class="h">Quarantine vault</p>
+      <p class="note" style="margin:0 0 14px">Quarantined files are moved here, renamed and made inert — they can't run. Restore puts a file back where it was; Delete removes it permanently.</p>
+      <div id="qList"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="p-settings">
+    <div class="card">
+      <p class="h">App</p>
+      <div class="field">
+        <label class="switch"><input type="checkbox" id="startupToggle"><span class="slider"></span></label>
+        <div><div class="lab">Start with Windows</div><div class="sub">Launch Sentinel automatically when you turn on your PC.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="h">Detection sensitivity</p>
+      <div class="segmented" id="sens">
+        <button data-s="low"><b>Low</b><span>Only confirmed malware &amp; secrets. Quietest.</span></button>
+        <button data-s="balanced"><b>Balanced</b><span>Recommended. Hides low-confidence noise.</span></button>
+        <button data-s="high"><b>High</b><span>Flags everything suspicious. Most thorough.</span></button>
+      </div>
+    </div>
+    <div class="card">
+      <p class="h">Exclusions</p>
+      <p class="note" style="margin:0 0 12px">Folders or files Sentinel should skip (e.g. a games folder, a trusted tools folder). Matches any path containing the text.</p>
+      <div class="row"><input id="exInput" type="text" placeholder="C:\Games   — path or text to exclude" spellcheck="false"><button class="btn ghost" onclick="addExclusion()">Add</button></div>
+      <div id="exList" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <p class="h">VirusTotal</p>
+      <div class="field"><div style="flex:1"><div class="lab">Cloud reputation</div><div class="sub" id="vtSub">—</div></div><b id="vtState">—</b></div>
+      <p class="note">Checks each file's fingerprint against ~70 engines. To turn on, set the <b>VT_API_KEY</b> environment variable to your free key from virustotal.com, then restart Sentinel. The key is read only from your environment — never stored in the app.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const ICON_MODE={quick:'Quick',full:'Full',custom:'Custom'};
+
+/* intro splash */
+(function(){
+  const intro=document.getElementById('intro'); if(!intro) return;
+  let gone=false;
+  const dismiss=()=>{ if(gone)return; gone=true; intro.classList.add('hide'); setTimeout(()=>intro.remove(),700); };
+  intro.addEventListener('click',dismiss);
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(dismiss, reduce?600:3500);
+})();
+
+/* animated count-up for numbers */
+function countUp(el,to){
+  if(!el) return; to=+to||0; const t0=performance.now(), dur=650;
+  function step(t){const p=Math.min(1,(t-t0)/dur); el.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString(); if(p<1)requestAnimationFrame(step);}
+  requestAnimationFrame(step);
+}
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); $('#p-'+t.dataset.tab).classList.add('active');
+  if(t.dataset.tab==='schedule') loadSchedule();
+  if(t.dataset.tab==='overview'){ loadCatalog(); loadStatus(); }
+  if(t.dataset.tab==='quarantine') loadQuarantine();
+  if(t.dataset.tab==='settings') loadSettings();
+  if(t.dataset.tab==='history') loadHistory();
+});
+
+/* ---------- safe install ---------- */
+let siStaged=null;
+const siDrop=$('#siDrop'), siInput=$('#siInput');
+if(siDrop){
+  siDrop.onclick=()=>siInput.click();
+  siInput.onchange=()=>{ if(siInput.files[0]) safeInstall(siInput.files[0]); };
+  ['dragenter','dragover'].forEach(e=>siDrop.addEventListener(e,ev=>{ev.preventDefault();siDrop.classList.add('over');}));
+  ['dragleave','drop'].forEach(e=>siDrop.addEventListener(e,ev=>{ev.preventDefault();siDrop.classList.remove('over');}));
+  siDrop.addEventListener('drop',ev=>{const f=ev.dataTransfer.files[0];if(f)safeInstall(f);});
+}
+async function safeInstall(file){
+  const out=$('#siOut');
+  out.innerHTML=`<div class="card prog"><div class="pbar"><i></i></div><div class="pline"><span><span class="spin"></span>Scanning ${file.name}…</span></div></div>`;
+  try{
+    const buf=await file.arrayBuffer();
+    const d=await (await fetch('/api/safeinstall',{method:'POST',headers:{'X-Filename':encodeURIComponent(file.name).replace(/%/g,'_')},body:buf})).json();
+    if(d.error){ out.innerHTML=`<div class="card empty">${d.error}</div>`; return; }
+    siStaged=d.staged;
+    const clean=d.verdict==='CLEAN';
+    out.innerHTML=`<div class="card">
+      ${clean
+        ? `<div class="hero" style="padding:16px 0"><div class="ring" style="width:70px;height:70px"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <div class="big" style="font-size:20px">${file.name} passed the scan</div><p>No threats found. You can install it — real-time protection will watch it.</p></div>`
+        : `<div class="hero" style="padding:16px 0"><div class="ring" style="width:70px;height:70px;background:radial-gradient(circle,rgba(229,9,20,.2),transparent 70%)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--red2)" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6A2 2 0 0022 18L13.7 3.9a2 2 0 00-3.4 0z"/></svg></div>
+            <div class="big" style="font-size:20px">Blocked — do not install ${file.name}</div>
+            <p><span class="cls ${d.malware_class}">${d.malware_class}</span> ${d.category}${d.confidence?' · '+d.confidence.toLowerCase()+' conf':''}</p>
+            <p class="note" style="margin:6px auto 0;max-width:460px">${d.rationale||''}</p></div>`}
+      <div class="findings" style="padding:0 4px 10px">${(d.findings||[]).map(f=>`<div class="finding"><b>${f.rule}</b> ${f.severity}${f.detail?' — '+f.detail:''}</div>`).join('')}</div>
+      ${clean?`<p class="note" style="margin:0 0 10px">A clean scan is a strong signal, not a 100% guarantee — real-time protection stays on while it installs.</p>`:''}
+      <div class="qa-row">
+        ${clean?`<button class="btn" onclick="siRun()">Install now</button>`:''}
+        <button class="btn ghost" onclick="siDelete()">Delete${clean?'':' now'}</button>
+      </div></div>`;
+  }catch(e){ out.innerHTML=`<div class="card empty">Scan failed: ${e}</div>`; }
+}
+async function siRun(){
+  if(!siStaged) return;
+  const d=await (await fetch('/api/safeinstall/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:siStaged})})).json();
+  $('#siOut').innerHTML=d.error
+    ? `<div class="card empty">Could not launch: ${d.error}</div>`
+    : `<div class="card"><div class="note" style="margin:0">▶ Launching the installer — follow its prompts. Real-time protection is watching for anything suspicious.</div></div>`;
+}
+async function siDelete(){
+  if(!siStaged) return;
+  await fetch('/api/safeinstall/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:siStaged})});
+  $('#siOut').innerHTML=`<div class="card"><div class="note" style="margin:0">Deleted. Nothing was installed.</div></div>`;
+  siStaged=null;
+}
+
+/* ---------- catalog / overview ---------- */
+async function loadCatalog(){
+  const c=await (await fetch('/api/catalog')).json();
+  countUp($('#coreTotal'), c.core_total);
+  const nice={signatures:'Signatures',static_heuristics:'Static heuristics',script_signals:'Script signals',behavior_monitor:'Behavior monitor'};
+  const max=Math.max(...Object.values(c.layers).map(v=>v.length));
+  $('#layers').innerHTML=Object.entries(c.layers).map(([k,v])=>`
+    <details class="layer"><summary><span style="font-weight:600">${nice[k]||k}</span>
+      <span class="bar"><i style="width:${Math.round(v.length/max*100)}%"></i></span>
+      <span class="cnt">${v.length}</span></summary>
+      <div class="techs">${v.map(t=>`<span class="tech">${t.replace(/^heur\./,'')}</span>`).join('')}</div></details>`).join('');
+  $('#statusBody').innerHTML=`
+    <div class="field"><div style="flex:1"><div class="lab">Core engine</div><div class="sub">hand-written techniques</div></div><b>${c.core_total}</b></div>
+    <div class="field"><div style="flex:1"><div class="lab">YARA rules</div><div class="sub">community signatures</div></div><b>${c.yara_active?c.yara_rules_count.toLocaleString():'off'}</b></div>
+    <div class="field"><div style="flex:1"><div class="lab">VirusTotal</div><div class="sub">~70-engine reputation</div></div><b>${c.intel.enabled?(c.intel.online?'online':'cache'):'off'}</b></div>`;
+  const badges=[`<span class="badge"><span class="dot"></span><span class="n">${c.core_total}</span> detections</span>`,
+    `<span class="badge ${c.yara_active?'on':'off'}">YARA ${c.yara_active?c.yara_rules_count.toLocaleString():'off'}</span>`,
+    `<span class="badge ${c.intel.enabled?'on':'off'}">VirusTotal ${c.intel.enabled?'on':'off'}</span>`];
+  $('#badges').innerHTML=badges.join('');
+}
+
+function switchTo(name){ const t=document.querySelector('.tab[data-tab="'+name+'"]'); if(t) t.click(); }
+function gotoScan(mode){ switchTo(mode); startScan(mode,mode); }
+
+async function loadStatus(){
+  let s; try{ s=await (await fetch('/api/status')).json(); }catch(e){ return; }
+  const prot = s.protection||{};
+  $('#tProt').textContent = prot.running ? (prot.active?'On':'Paused') : 'Off';
+  $('#tProt').className = 'dt-v ' + (prot.active?'cln':(prot.running?'sus':'mal'));
+  countUp($('#tCaught'), s.caught_count||0);
+  countUp($('#tQuar'), s.quarantine_count||0);
+  $('#tLast').textContent = s.last_scan ? (s.last_scan.flagged+' flagged') : '—';
+  const sys = s.system||{};
+  const row=(label,ok,offHint)=>{
+    const state = ok===null||ok===undefined ? 'unknown' : (ok?'on':'off');
+    const txt = state==='unknown' ? '—' : (ok?'On':'Off');
+    const col = state==='unknown' ? 'var(--faint)' : (ok?'var(--green)':'var(--red2)');
+    return `<div class="secrow"><span class="sdot ${state}"></span>
+      <div style="flex:1"><div class="lab">${label}</div>${(!ok&&offHint)?`<div class="sub">${offHint}</div>`:''}</div>
+      <b style="color:${col}">${txt}</b></div>`;
+  };
+  $('#sysBody').innerHTML =
+    row('Sentinel real-time', prot.running?prot.active:false, prot.running?'Paused — resume from the tray':'Launch Sentinel (tray) to enable') +
+    row('Windows Defender', sys.defender, 'Turn real-time protection on in Windows Security') +
+    row('Windows Firewall', sys.firewall, 'Enable the firewall in Windows Security') +
+    row('VirusTotal cloud', s.intel&&s.intel.enabled, 'Set VT_API_KEY for ~70-engine reputation');
+  const caught = s.caught||[];
+  if(caught.length){
+    $('#recentBody').innerHTML = caught.map(d=>`<div class="secrow">
+      <span class="chip ${d.verdict}">${d.verdict}</span>
+      <div style="flex:1"><div class="cat">${d.category||d.malware_class}</div>
+        <div class="qpath">${String(d.path||'').split(/[\\/]/).pop()}</div></div>
+      <span class="conf">${d.when||''}</span></div>`).join('');
+  } else {
+    $('#recentBody').innerHTML = `<div class="note" style="margin:0">${prot.running?'No threats caught yet — you’re clean. 🛡':'Real-time protection isn’t running. Launch Sentinel from the tray to watch folders live.'}</div>`;
+  }
+}
+
+/* ---------- scan with live progress ---------- */
+let jobResults={};
+async function startScan(mode,tab){
+  const quar=$('#quar-'+tab)?.checked||false;
+  const path=mode==='custom'?$('#path').value.trim():'';
+  if(mode==='custom'&&!path) return;
+  const out=$('#out-'+tab);
+  out.innerHTML=`<div class="card prog">
+    <div class="pbar"><i></i></div>
+    <div class="pline"><span><span class="spin"></span>Scanning<span id="proot-${tab}"></span></span>
+      <span><b id="pscan-${tab}">0</b> scanned · <b id="pflag-${tab}">0</b> flagged</span></div></div>`;
+  let r=await (await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode,path,quarantine:quar})})).json();
+  if(r.error||!r.job_id){out.innerHTML=`<div class="card empty">${r.error||'could not start scan'}</div>`;return;}
+  poll(r.job_id,tab);
+}
+async function poll(jid,tab){
+  const d=await (await fetch('/api/progress?job='+jid)).json();
+  if(d.error){$('#out-'+tab).innerHTML=`<div class="card empty">${d.error}</div>`;return;}
+  if($('#pscan-'+tab)) $('#pscan-'+tab).textContent=d.scanned;
+  if($('#pflag-'+tab)) $('#pflag-'+tab).textContent=d.flagged;
+  if($('#proot-'+tab)&&d.root) $('#proot-'+tab).textContent=' · '+shorten(d.root);
+  if(d.state==='running'){setTimeout(()=>poll(jid,tab),350);return;}
+  if(d.state==='error'){$('#out-'+tab).innerHTML=`<div class="card empty">Scan failed: ${d.error}</div>`;return;}
+  jobResults[tab]=d.results||[];
+  renderScan(tab,d,jid);
+}
+function shorten(p){return p.length>46?'…'+p.slice(-44):p;}
+function renderScan(tab,d,jid){
+  const c=d.counts||{};
+  $('#out-'+tab).innerHTML=`<div class="card">
+    <div class="stats">
+      <div class="stat"><div class="v">${d.scanned}</div><div class="k">scanned</div></div>
+      <div class="stat mal"><div class="v">${c.MALICIOUS||0}</div><div class="k">malicious</div></div>
+      <div class="stat sus"><div class="v">${c.SUSPICIOUS||0}</div><div class="k">suspicious</div></div>
+      <div class="stat cln"><div class="v">${c.CLEAN||0}</div><div class="k">clean</div></div></div>
+    <div class="filters">
+      <button data-f="ALL" class="active">All flagged (${d.flagged})</button>
+      <button data-f="MALICIOUS">Malicious</button><button data-f="SUSPICIOUS">Suspicious</button>
+      ${jid?`<a class="op" style="margin-left:auto" href="/api/report?id=${jid}&fmt=csv" download>Export CSV</a><a class="op" href="/api/report?id=${jid}&fmt=pdf" download>Export PDF</a>`:''}</div>
+    <div id="rl-${tab}"></div>
+    <div class="note">${d.root} · ${d.elapsed}s${d.truncated?' · stopped at file limit':''}</div></div>`;
+  $('#out-'+tab).querySelectorAll('.filters button').forEach(b=>b.onclick=()=>{
+    $('#out-'+tab).querySelectorAll('.filters button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');renderList(tab,b.dataset.f);});
+  renderList(tab,'ALL');
+}
+function card(r){return `<details class="res"><summary>
+    <span class="chip ${r.verdict}">${r.verdict}</span>
+    ${r.malware_class&&r.malware_class!=='CLEAN'?`<span class="cls ${r.malware_class}">${r.malware_class}</span>`:''}
+    ${r.category?`<span class="cat">${r.category}</span>`:''}${r.confidence?`<span class="conf">· ${r.confidence.toLowerCase()} conf</span>`:''}
+    <span class="fname">${r.path}</span></summary>
+    <div class="findings">${r.rationale?`<div class="rationale">${r.rationale}</div>`:''}
+      ${r.findings.map(f=>`<div class="finding"><b>${f.rule}</b> ${f.severity}${f.detail?' — '+f.detail:''}</div>`).join('')}
+      ${r.quarantined_to?`<div class="finding">↳ quarantined</div>`:''}</div></details>`;}
+function renderList(tab,filter){
+  const list=(jobResults[tab]||[]).filter(r=>filter==='ALL'||r.verdict===filter);
+  const box=$('#rl-'+tab);if(!box)return;
+  box.innerHTML=list.length?list.map(card).join(''):`<div class="empty">No ${filter==='ALL'?'flagged':filter.toLowerCase()} files.</div>`;
+}
+
+/* ---------- custom: drag & drop + browse ---------- */
+const drop=$('#drop'),fileInput=$('#fileInput');
+drop.onclick=()=>fileInput.click();
+fileInput.onchange=()=>{if(fileInput.files[0])scanFile(fileInput.files[0]);};
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',ev=>{const f=ev.dataTransfer.files[0];if(f)scanFile(f);});
+async function scanFile(file){
+  const out=$('#out-custom');
+  out.innerHTML=`<div class="card prog"><div class="pbar"><i></i></div><div class="pline"><span><span class="spin"></span>Scanning ${file.name}</span></div></div>`;
+  const buf=await file.arrayBuffer();
+  const r=await (await fetch('/api/scan_bytes',{method:'POST',headers:{'X-Filename':encodeURIComponent(file.name).replace(/%/g,'_')},body:buf})).json();
+  out.innerHTML=`<div class="card">
+    ${r.verdict==='CLEAN'
+      ?`<div class="hero" style="padding:20px"><div class="ring" style="width:72px;height:72px"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <div class="big" style="font-size:20px">${file.name} is clean</div><p>No threats found in this file.</p></div>`
+      :`<p class="h">Result for ${file.name}</p>${card(r)}`}</div>`;
+}
+
+/* ---------- schedule ---------- */
+async function loadSchedule(){
+  const s=await (await fetch('/api/schedule')).json();
+  $('#schEnabled').checked=!!s.enabled;
+  $('#schInterval').value=String(s.interval_hours||24);
+  $('#schMode').value=s.mode||'quick';
+  $('#schStatus').textContent=s.enabled
+    ?`On — last: ${s.last_run||'not yet'}${s.next_run?' · next: '+new Date(s.next_run*1000).toLocaleString():''}`
+    :'Off';
+  $('#schHistory').innerHTML=(s.history&&s.history.length)
+    ? s.history.map(h=>`${h.when} · ${ICON_MODE[h.mode]||h.mode} · ${h.scanned} scanned · ${h.flagged} flagged`).join('<br>')
+    : 'None yet.';
+}
+async function saveSchedule(){
+  const body={enabled:$('#schEnabled').checked,interval_hours:+$('#schInterval').value,mode:$('#schMode').value};
+  await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  loadSchedule();
+}
+['schEnabled','schInterval','schMode'].forEach(id=>$('#'+id).addEventListener('change',saveSchedule));
+$('#startupToggle')&&$('#startupToggle').addEventListener('change',async()=>{
+  await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startup:$('#startupToggle').checked})});
+  loadSettings();
+});
+loadStatus();
+
+/* ---------- history ---------- */
+async function loadHistory(){
+  const d=await (await fetch('/api/history')).json();
+  const box=$('#histList');
+  const h=d.items||[];
+  if(!h.length){box.innerHTML='<div class="empty">No scans yet.</div>';return;}
+  box.innerHTML=h.map(e=>{const c=e.counts||{};return `<div class="qitem">
+    <div class="meta">
+      <div><b>${ICON_MODE[e.mode]||e.mode} scan</b> · ${e.when}</div>
+      <div class="qpath">${e.root}</div>
+      <div class="conf">${e.scanned} scanned · <span style="color:var(--red2)">${c.MALICIOUS||0} mal</span> · <span style="color:var(--amber)">${c.SUSPICIOUS||0} sus</span> · ${e.flagged} flagged · ${e.elapsed}s</div></div>
+    <a class="op" href="/api/report?id=${e.id}&fmt=csv" download>CSV</a>
+    <a class="op" href="/api/report?id=${e.id}&fmt=pdf" download>PDF</a></div>`;}).join('');
+}
+
+/* ---------- quarantine ---------- */
+let qItems=[];
+async function loadQuarantine(){
+  const d=await (await fetch('/api/quarantine')).json();
+  qItems=d.items||[];
+  const box=$('#qList');
+  if(!qItems.length){box.innerHTML='<div class="empty">Nothing in quarantine — you’re clean. 🛡</div>';return;}
+  box.innerHTML=qItems.map((it,i)=>`<div class="qitem">
+    <div class="meta"><div>${it.malware_class&&it.malware_class!=='CLEAN'?`<span class="cls ${it.malware_class}">${it.malware_class}</span> `:''}<span class="cat">${it.category||it.verdict}</span></div>
+      <div class="qpath">${it.original_path}</div>
+      <div class="qpath">quarantined ${it.quarantined_at||''}</div></div>
+    <button class="op restore" data-i="${i}">Restore</button>
+    <button class="op del" data-i="${i}">Delete</button></div>`).join('');
+  box.querySelectorAll('.op.restore').forEach(b=>b.onclick=()=>qAction('restore',qItems[+b.dataset.i].quar_file));
+  box.querySelectorAll('.op.del').forEach(b=>b.onclick=()=>{
+    if(confirm('Permanently delete this file? This cannot be undone.')) qAction('delete',qItems[+b.dataset.i].quar_file);});
+}
+async function qAction(action,file){
+  await fetch('/api/quarantine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,file})});
+  loadQuarantine();
+}
+
+/* ---------- settings ---------- */
+let settings={sensitivity:'balanced',exclusions:[]};
+async function loadSettings(){
+  const s=await (await fetch('/api/settings')).json();
+  settings={sensitivity:s.sensitivity,exclusions:s.exclusions||[]};
+  document.querySelectorAll('#sens button').forEach(b=>b.classList.toggle('active',b.dataset.s===settings.sensitivity));
+  if($('#startupToggle')) $('#startupToggle').checked=!!s.startup;
+  renderExclusions();
+  $('#vtState').textContent=s.intel.enabled?(s.intel.online?'On':'Cached'):'Off';
+  $('#vtSub').textContent=s.intel.enabled?(s.intel.online?'Live — querying ~70 engines by file hash':'Key set, serving cached verdicts'):'Not configured';
+}
+document.querySelectorAll('#sens button').forEach(b=>b.onclick=()=>{settings.sensitivity=b.dataset.s;saveSettings();});
+function renderExclusions(){
+  const box=$('#exList');
+  box.innerHTML=settings.exclusions.length
+    ? settings.exclusions.map((e,i)=>`<div class="exitem"><div style="flex:1" class="qpath">${e}</div><button class="op" data-i="${i}">Remove</button></div>`).join('')
+    : '<div class="note" style="margin:0">No exclusions yet.</div>';
+  box.querySelectorAll('.op').forEach(b=>b.onclick=()=>{settings.exclusions.splice(+b.dataset.i,1);saveSettings();});
+}
+function addExclusion(){const v=$('#exInput').value.trim();if(!v)return;settings.exclusions.push(v);$('#exInput').value='';saveSettings();}
+async function saveSettings(){
+  await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sensitivity:settings.sensitivity,exclusions:settings.exclusions})});
+  loadSettings();
+}
+
+loadCatalog();
+</script>
+</body>
+</html>

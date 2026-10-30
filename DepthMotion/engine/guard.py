@@ -1,22 +1,25 @@
-"""Keeps DepthMotion a good neighbour: the PC must stay responsive while it works.
+"""Keeps DepthMotion a good neighbour: the PC must stay responsive while it works — without asking anyone to close
+their apps. The heavy work lives on the graphics card; RAM only passes data through.
 
-RAM is what keeps the whole PC alive (browsers, everything) — so RAM is strict and adaptive:
-  plan(...)    how much the clip needs vs what's free right now; a reserve is always left for everything else
-               (the more crowded the PC, the less DepthMotion takes: it lowers the working resolution, or refuses)
-  check()      during the job: if free RAM gets tight it PAUSES and waits for memory to come back, and only
-               stops (with a message) if the squeeze lasts — it never takes the PC down
-VRAM is the graphics card's own memory and day-to-day apps hardly use it — so VRAM is generous:
-  be_polite()  below-normal priority (children inherit), and the job may use all the VRAM that's free minus a margin
-  gpu_room()   how much VRAM is free, so heavy work (the people tracker's frames) moves to the card when it fits
+RAM: Windows runs with RAM nearly full on purpose and moves memory nobody is touching (background tabs) to its page
+file on disk. That's normal, and every app relies on it. What actually hurts a PC is THRASHING: Windows having to read
+memory back from disk non-stop — that's the freeze. So the guard watches that, not "free RAM":
+  plan(...)    can the job fit in what Windows can still commit (RAM + page file)? Only a PC that is genuinely out of
+               memory is refused.
+  check()      during the job: if the PC is actually stalling (a 50 ms nap waking up seconds late) or RAM is truly
+               empty, it PAUSES until things calm down, and only stops if that lasts.
+VRAM: be_polite() caps the job to the VRAM that's free minus a margin, so it never spills into system RAM.
 One heavy job at a time on this PC (one_job). No extra packages: Windows' own calls through ctypes.
 """
 import ctypes
 import os
 import sys
+import threading
 import time
 
-FLOOR_GB = 1.0           # free RAM under this mid-job → pause
-PAUSE_LIMIT_S = 120      # how long to wait for memory to come back before stopping
+FLOOR_GB = 0.15          # RAM truly empty: pause
+PAUSE_LIMIT_S = 120      # how long to wait for the PC to calm down before stopping
+COMMIT_MARGIN_GB = 2.0   # left in Windows' commit (RAM + page file) for everything else
 VRAM_MARGIN_GB = 1.5     # left on the card for the desktop / video playback
 BELOW_NORMAL = 0x00004000
 
@@ -45,11 +48,52 @@ def total_gb():
     return _mem().ullTotalPhys / 2 ** 30 if sys.platform == "win32" else 64.0
 
 
+def commit_room_gb():
+    """What Windows can still hand out, counting its page file on disk (the real limit, not "free RAM")."""
+    return _mem().ullAvailPageFile / 2 ** 30 if sys.platform == "win32" else 64.0
+
+
 def reserve_gb():
-    """What's always left for the rest of the PC: 1.5 GB, or 5 % of the RAM on bigger machines. A job only adds a few
-    hundred MB now (frames on disk, model on the card), so it fits beside a normal day's apps; Windows' "free" already
-    counts cache it can hand back instantly, and the pause floor still guards the job while it runs."""
-    return max(1.5, 0.05 * total_gb())
+    """Shown in the app's gauge: the RAM a job never takes for itself (the rest of the PC keeps working beside it)."""
+    return FLOOR_GB
+
+
+# ---- is the PC actually stalling? A small high-priority thread asks for 50 ms naps and times them: when Windows is
+# thrashing (and everything on the PC with it), those naps take seconds. Page-read counters can't tell that apart from an
+# app simply loading its libraries from disk; this can. ----
+_lag = {"last": [], "thread": None}
+
+
+def _watch_lag():
+    try:
+        ctypes.windll.kernel32.SetThreadPriority(ctypes.windll.kernel32.GetCurrentThread(), 2)  # THREAD_PRIORITY_HIGHEST
+    except Exception:
+        pass
+    while True:
+        t0 = time.perf_counter()
+        time.sleep(0.05)
+        _lag["last"] = (_lag["last"] + [time.perf_counter() - t0 - 0.05])[-6:]
+        time.sleep(0.45)
+
+
+def _start_lag():
+    if not _lag["thread"]:
+        _lag["thread"] = threading.Thread(target=_watch_lag, daemon=True); _lag["thread"].start()
+
+
+def lag_s():
+    """How late the last nap woke up (seconds): ~0 on a healthy PC, seconds when it's stalling."""
+    _start_lag()
+    return _lag["last"][-1] if _lag["last"] else 0.0
+
+
+def stuck():
+    """The PC is in trouble: RAM truly empty, or it is stalling (two naps in a row woke up more than a second late)."""
+    _start_lag()
+    if free_gb() < FLOOR_GB:
+        return True
+    last = _lag["last"][-2:]
+    return len(last) == 2 and min(last) > 1.0
 
 
 def gpu_room():
@@ -65,18 +109,18 @@ def gpu_room():
 
 
 def check(where="", notify=None):
-    """Free RAM tight? Pause until it comes back (the person is probably using the PC); stop only if it doesn't."""
-    f = free_gb()
-    if f >= FLOOR_GB:
+    """PC in trouble? Pause until it calms down (the person is probably using it); stop only if it doesn't."""
+    if not stuck():
         return
-    t0 = time.time()
-    while free_gb() < FLOOR_GB + 0.5:
+    t0, calm = time.time(), 0
+    while calm < 3:
         if time.time() - t0 > PAUSE_LIMIT_S:
-            raise LowMemory(f"Stopped to keep your PC responsive: memory stayed under {FLOOR_GB:.0f} GB free for "
-                            f"{PAUSE_LIMIT_S // 60} minutes{(' (' + where + ')') if where else ''}. Close something heavy, then try again.")
+            raise LowMemory(f"Stopped to keep your PC responsive: it stayed short of memory for {PAUSE_LIMIT_S // 60} "
+                            f"minutes{(' (' + where + ')') if where else ''}. Try again in a moment.")
         if notify:
-            notify(f"Paused — your PC needs its memory ({free_gb():.1f} GB free). It carries on by itself.")
-        time.sleep(2)
+            notify("Paused for a moment - your PC is busy making room. It carries on by itself.")
+        time.sleep(1)
+        calm = 0 if stuck() else calm + 1
 
 
 def be_polite():
@@ -112,17 +156,17 @@ def need_gb(frames, w, h, people=False, location=False, tracker_on_gpu=True):
 
 
 def plan(frames, src_w, src_h, max_res=1280, people=False, location=False):
-    """→ the working long-side resolution. Comfortable first (the reserve left for other apps); if nothing fits that,
-    the job still runs when it fits above the pause floor — it pauses mid-job if the PC needs its memory back — so a
-    normal day's apps never block it. Only a job that can't fit at all is refused."""
+    """-> the working long-side resolution. Full resolution whenever the job fits in what Windows can still commit (RAM +
+    its page file: background apps' idle memory moves to disk to make room, as for any app). A lower size only when
+    even that is short; a clear refusal only when the PC is genuinely out of memory."""
+    room = commit_room_gb() - COMMIT_MARGIN_GB
     on_gpu = gpu_room() > 6
-    for room in (free_gb() - reserve_gb(), free_gb() - FLOOR_GB - 0.2):
-        for res in (max_res, 960, 720, 540):
-            s = min(1.0, res / max(src_w, src_h))
-            if need_gb(frames, src_w * s, src_h * s, people, location, on_gpu) <= room:
-                return res
-    raise LowMemory(f"Not enough free memory for this clip right now ({free_gb():.1f} GB free). "
-                    f"Trim it shorter or close something heavy, then try again.")
+    for res in (max_res, 960, 720, 540):
+        s = min(1.0, res / max(src_w, src_h))
+        if need_gb(frames, src_w * s, src_h * s, people, location, on_gpu) <= room:
+            return res
+    raise LowMemory("Your PC is out of memory right now (even counting Windows' page file). "
+                    "Trim the clip shorter or close something heavy, then try again.")
 
 
 class one_job:
@@ -220,20 +264,17 @@ def snapshot():
 
 
 def preflight(frames, src_w, src_h, people=False, location=False, max_res=1280):
-    """What a job would need, at which working size, and whether it can start now — without starting it.
-    tight: it fits, but only by dipping into the reserve (it may pause for a moment if other apps need memory)."""
+    """What a job would need, at which working size, and whether it can start now - without starting it.
+    tight: it fits, but RAM is nearly full, so Windows will move some idle memory (background tabs) to disk first."""
+    room = commit_room_gb() - COMMIT_MARGIN_GB
     on_gpu = gpu_room() > 6
-    room, hard = free_gb() - reserve_gb(), free_gb() - FLOOR_GB - 0.2
-    needs = []
+    full = None
     for res in (max_res, 960, 720, 540):
         s = min(1.0, res / max(src_w, src_h))
-        needs.append((res, need_gb(frames, src_w * s, src_h * s, people, location, on_gpu)))
-    full = needs[0][1]
-    for limit, tight in ((room, False), (hard, True)):
-        for res, need in needs:
-            if need <= limit:
-                return {"ok": True, "tight": tight, "res": res, "need": round(need, 1), "need_full": round(full, 1),
-                        "room": round(max(room, 0) if not tight else hard, 1), "reduced": res < max_res, "tracker_on_gpu": on_gpu}
-    res, need = needs[-1]
-    return {"ok": False, "res": None, "need": round(need, 1), "need_full": round(full, 1), "room": round(hard, 1),
-            "short_by": round(need - hard, 1), "tracker_on_gpu": on_gpu}
+        need = need_gb(frames, src_w * s, src_h * s, people, location, on_gpu)
+        full = full or need
+        if need <= room:
+            return {"ok": True, "tight": free_gb() < need + 0.5, "res": res, "need": round(need, 1), "need_full": round(full, 1),
+                    "room": round(free_gb(), 1), "reduced": res < max_res, "tracker_on_gpu": on_gpu}
+    return {"ok": False, "res": None, "need": round(need, 1), "need_full": round(full, 1), "room": round(room, 1),
+            "short_by": round(need - room, 1), "tracker_on_gpu": on_gpu}

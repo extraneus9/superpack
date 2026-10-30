@@ -67,42 +67,40 @@ class VideoDepthAnything(nn.Module):
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
 
-    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', fp32=False, keep_size=True):
-        # DepthMotion: keep_size=False returns depth at the model's own resolution (~518 px) instead of the frame size,
-        # a fraction of the RAM for a long clip — the caller upsamples one frame at a time when it writes
-        frame_height, frame_width = frames[0].shape[:2]
+    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', fp32=False, keep_size=True, as_tensor=False):
+        # DepthMotion: everything stays on the graphics card. Frames go up 8-bit (straight from VRAM when the caller
+        # already holds them there: `frames.t`), are resized + normalised on the card, and every frame's depth is kept
+        # and aligned (the same scale/shift maths as utils.util) on the card too — RAM only ever sees the final result,
+        # or nothing at all with as_tensor=True. keep_size=False keeps depth at the model's own size.
+        n = frames.shape[0]
+        frame_height, frame_width = frames.shape[1:3]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
         if ratio > 1.78:  # we recommend to process video with ratio smaller than 16:9 due to memory limitation
             input_size = int(input_size * 1.777 / ratio)
             input_size = round(input_size / 14) * 14
+        net_h, net_w = Resize(width=input_size, height=input_size, resize_target=False, keep_aspect_ratio=True,
+                              ensure_multiple_of=14, resize_method='lower_bound',
+                              image_interpolation_method=cv2.INTER_CUBIC).get_size(frame_width, frame_height)[::-1]
+        mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+        on_card = getattr(frames, 't', None)
 
-        transform = Compose([
-            Resize(
-                width=input_size,
-                height=input_size,
-                resize_target=False,
-                keep_aspect_ratio=True,
-                ensure_multiple_of=14,
-                resize_method='lower_bound',
-                image_interpolation_method=cv2.INTER_CUBIC,
-            ),
-            NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            PrepareForNet(),
-        ])
-
-        frame_list = [frames[i] for i in range(frames.shape[0])]
         frame_step = INFER_LEN - OVERLAP
-        org_video_len = len(frame_list)
-        append_frame_len = (frame_step - (org_video_len % frame_step)) % frame_step + (INFER_LEN - frame_step)
-        frame_list = frame_list + [frame_list[-1].copy()] * append_frame_len
+        append_frame_len = (frame_step - (n % frame_step)) % frame_step + (INFER_LEN - frame_step)
+        idx = list(range(n)) + [n - 1] * append_frame_len
 
         depth_list = []
         pre_input = None
-        for frame_id in tqdm(range(0, org_video_len, frame_step)):
-            cur_list = []
-            for i in range(INFER_LEN):
-                cur_list.append(torch.from_numpy(transform({'image': frame_list[frame_id+i].astype(np.float32) / 255.0})['image']).unsqueeze(0).unsqueeze(0))
-            cur_input = torch.cat(cur_list, dim=1).to(device)
+        for frame_id in tqdm(range(0, n, frame_step)):
+            ids = idx[frame_id:frame_id + INFER_LEN]
+            if on_card is not None:
+                x = on_card[torch.as_tensor(ids, device=on_card.device)]
+            else:
+                x = torch.from_numpy(np.ascontiguousarray(np.stack([frames[i] for i in ids]))).to(device)
+            x = x.permute(0, 3, 1, 2).float().div_(255)
+            x = F.interpolate(x, size=(net_h, net_w), mode='bicubic', align_corners=False).clamp_(0, 1)
+            cur_input = ((x - mean) / std).unsqueeze(0)
+            del x
             if pre_input is not None:
                 cur_input[:, :OVERLAP, ...] = pre_input[:, KEYFRAMES, ...]
 
@@ -110,54 +108,45 @@ class VideoDepthAnything(nn.Module):
                 with torch.autocast(device_type=device, enabled=(not fp32)):
                     depth = self.forward(cur_input) # depth shape: [1, T, H, W]
 
-            depth = depth.to(cur_input.dtype)
+            depth = depth.float().flatten(0, 1)
             if keep_size:
-                depth = F.interpolate(depth.flatten(0,1).unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)
-            else:
-                depth = depth.flatten(0,1).unsqueeze(1).float()
-            depth_list += [depth[i][0].half().cpu().numpy() for i in range(depth.shape[0])]  # DepthMotion: half precision in RAM
-
+                depth = F.interpolate(depth.unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)[:, 0]
+            depth_list += list(depth.half())
             pre_input = cur_input
 
-        del frame_list
-        gc.collect()
+        # align each window to the one before (scale + shift on the overlapping keyframes), blend the overlap
+        def fit(pred, target):  # least squares pred·s + t ≈ target (utils.util.compute_scale_and_shift_full, all-ones mask)
+            p, q = pred.double(), target.double()
+            a00, a01, a11 = (p * p).sum(), p.sum(), float(p.numel())
+            b0, b1 = (p * q).sum(), q.sum()
+            det = a00 * a11 - a01 * a01
+            if det == 0:
+                return 1.0, 0.0
+            return float((a11 * b0 - a01 * b1) / det), float((-a01 * b0 + a00 * b1) / det)
 
-        depth_list_aligned = []
-        ref_align = []
+        lift = lambda d, sc, sh: torch.clamp(d.float() * sc + sh, min=0).half()
+        aligned, ref = [], []
         align_len = OVERLAP - INTERP_LEN
         kf_align_list = KEYFRAMES[:align_len]
-
         for frame_id in range(0, len(depth_list), INFER_LEN):
-            if len(depth_list_aligned) == 0:
-                depth_list_aligned += depth_list[:INFER_LEN]
-                for kf_id in kf_align_list:
-                    ref_align.append(depth_list[frame_id+kf_id])
-            else:
-                curr_align = []
-                for i in range(len(kf_align_list)):
-                    curr_align.append(depth_list[frame_id+i])
+            if not aligned:
+                aligned += depth_list[:INFER_LEN]
+                ref = [depth_list[frame_id + k] for k in kf_align_list]
+                continue
+            curr = [depth_list[frame_id + i] for i in range(len(kf_align_list))]
+            scale, shift = (1.0, 0.0) if self.metric else fit(torch.cat([c.flatten() for c in curr]), torch.cat([r.flatten() for r in ref]))
+            pre = aligned[-INTERP_LEN:]
+            post = [lift(d, scale, shift) for d in depth_list[frame_id + align_len:frame_id + OVERLAP]]
+            w = [i / (INTERP_LEN - 1) for i in range(INTERP_LEN)]  # utils.util.get_interpolate_frames weights
+            aligned[-INTERP_LEN:] = [(pre[i].float() * (1 - w[i]) + post[i].float() * w[i]).half() for i in range(INTERP_LEN)]
+            aligned += [lift(depth_list[frame_id + i], scale, shift) for i in range(OVERLAP, INFER_LEN)]
+            ref = ref[:1] + [lift(depth_list[frame_id + k], scale, shift) for k in kf_align_list[1:]]
 
-                if self.metric:
-                    scale, shift = 1.0, 0.0
-                else:
-                    scale, shift = compute_scale_and_shift(np.concatenate(curr_align).astype(np.float32),
-                                                           np.concatenate(ref_align).astype(np.float32),
-                                                           np.concatenate(np.ones_like(ref_align)==1))
-
-                pre_depth_list = depth_list_aligned[-INTERP_LEN:]
-                post_depth_list = depth_list[frame_id+align_len:frame_id+OVERLAP]
-                for i in range(len(post_depth_list)):
-                    post_depth_list[i] = np.maximum(post_depth_list[i].astype(np.float32) * scale + shift, 0).astype(np.float16)
-                depth_list_aligned[-INTERP_LEN:] = [np.asarray(x, np.float16) for x in get_interpolate_frames(pre_depth_list, post_depth_list)]
-
-                for i in range(OVERLAP, INFER_LEN):
-                    depth_list_aligned.append(np.maximum(depth_list[frame_id+i].astype(np.float32) * scale + shift, 0).astype(np.float16))
-
-                ref_align = ref_align[:1]
-                for kf_id in kf_align_list[1:]:
-                    ref_align.append(np.maximum(depth_list[frame_id+kf_id].astype(np.float32) * scale + shift, 0).astype(np.float16))
-
-        depth_list = depth_list_aligned
-
-        return np.stack(depth_list[:org_video_len], axis=0), target_fps
-
+        out = torch.stack(aligned[:n])
+        del depth_list, aligned, ref, pre_input
+        if as_tensor:
+            return out, target_fps
+        res = out.cpu().numpy()
+        del out
+        torch.cuda.empty_cache()
+        return res, target_fps

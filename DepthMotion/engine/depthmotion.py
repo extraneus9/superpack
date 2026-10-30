@@ -90,7 +90,7 @@ def load_model(encoder="vitl", say=None):
         _models.clear(); torch.cuda.empty_cache()  # one model in VRAM at a time
         with torch.device("cuda"):  # built and loaded on the card: the weights never stop in RAM
             m = VideoDepthAnything(**MODEL_CONFIGS[encoder])
-        sd = torch.load(weights_path(encoder), map_location="cuda", weights_only=True, mmap=True)  # read off disk, not into RAM
+        sd = torch.load(weights_path(encoder), map_location="cuda", weights_only=True)  # piece by piece onto the card: +0.2 GB RAM (a memory map spiked +1.6 GB)
         m.load_state_dict(sd, strict=True)
         del sd
         _models[encoder] = m.eval()
@@ -158,10 +158,13 @@ def normalize(depths, lo_pct=1.0, hi_pct=99.0, shoulder=False):
     """Clip-wide robust normalisation to 0..1 (near = 1). One range for the whole clip = no flicker.
     shoulder: the nearest few percent (a fist or a leg swinging into the lens) roll off softly toward white instead of
     being cut flat — so they keep their shape in clay instead of turning into a flat white patch."""
-    sample = depths[:: max(1, len(depths) // 60)].ravel()
+    sample = depths[:: max(1, len(depths) // 60)].astype(np.float32).ravel()
     lo, hi = np.percentile(sample, [lo_pct, hi_pct])
-    x = (depths - lo) / max(hi - lo, 1e-6)
-    return np.clip(soft_near(x) if shoulder else x, 0, 1).astype(np.float32)
+    out = np.empty(depths.shape, np.float16)  # a few frames at a time: whole-clip temporaries cost GBs at high res
+    for i in range(0, len(depths), 8):
+        x = (depths[i:i + 8].astype(np.float32) - lo) / max(hi - lo, 1e-6)
+        out[i:i + 8] = np.clip(soft_near(x) if shoulder else x, 0, 1)
+    return out
 
 
 def soft_near(x, k=0.85):
@@ -239,6 +242,7 @@ def normals(d, relief=2.5, lab=None):
     draws a rim round every figure. With the people known, each region's surface is worked out on its own and carried
     smoothly right up to its outline (normalised blur extends it past the edge), so there is no rim at all; without
     them, steep jumps are flattened."""
+    d = np.asarray(d, np.float32)
     if lab is None:
         z = cv2.GaussianBlur(d, (0, 0), 3.0)
         gy, gx = np.gradient(z * max(d.shape) * relief)

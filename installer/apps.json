@@ -107,5 +107,19 @@
       "Light on your PC: it runs beside your open apps and pauses if your PC needs memory. Nothing is uploaded."
     ],
     "note": "Windows only. Needs an NVIDIA graphics card; downloads its AI engine once (about 3 GB). New location needs Blender (free). Best quality is for non-commercial use; Fast is free for any use."
+  },
+  "sentinel": {
+    "desc": "A free antivirus that catches and quarantines real malware.",
+    "lead": "A lightweight antivirus that scans files and folders, watches for threats as they land, and moves anything dangerous into quarantine — on by default, nothing uploaded unless you ask.",
+    "points": [
+      "Scan any file or folder, or drop something in and let it check on the spot.",
+      "Real-time guard: watches a folder and catches threats the moment they appear.",
+      "Catches and quarantines on its own — the threat is moved out of reach, not just flagged.",
+      "Safe Install: run an installer under close watch, so anything it tries is caught live.",
+      "Optional online check: paste your own free VirusTotal key to compare against 70+ engines.",
+      "Optional deep rules: fetches a large community threat-rule pack on demand.",
+      "Light on your PC: a plain Python engine, no account, no telemetry, nothing sent out."
+    ],
+    "note": "Windows only. The online check is optional and needs your own free VirusTotal key. It never replaces Windows Security — run it alongside."
   }
 }

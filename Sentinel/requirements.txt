@@ -1,0 +1,12 @@
+# Core Sentinel runs on the Python standard library alone.
+# Optional layer: YARA community-rule scanning.
+yara-python>=4.3
+pystray>=0.19
+pillow>=9
+pywebview>=5.0
+# Optional layer: read WinZip-AES encrypted archives (malware feeds ship samples this way).
+pyzipper>=0.3.6
+# CA bundle so the VirusTotal HTTPS lookup verifies on machines with an incomplete cert store.
+certifi>=2024.2.2
+# Active response: find and kill the process doing ransomware-style file changes.
+psutil>=5.9

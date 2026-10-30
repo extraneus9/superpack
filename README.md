@@ -16,6 +16,7 @@ One installer puts them on your computer: pick all of them or only the ones you 
 | [**bloom**](./bloom) | Your notifications, redesigned, with your sound. | Windows |
 | [**FrameHUD**](./FrameHUD) | Your FPS and PC stats over any game. | Windows |
 | [**DepthMotion**](./DepthMotion) | Real footage in, pure motion out. | Windows |
+| [**Sentinel**](./Sentinel) | A free antivirus that catches and quarantines real malware. | Windows |
 
 ### the player
 A modern video and audio player that opens anything — MP4, MKV, MOV, AVI, FLAC, WAV and more — in a blink.
@@ -126,6 +127,21 @@ Turns any clip into motion references for AI video: the bodies, timing and camer
 > Windows only. Needs an NVIDIA graphics card; downloads its AI engine once (about 3 GB). New location needs Blender (free). Best quality is for non-commercial use; Fast is free for any use.
 
 **Runs on:** Windows · **Code:** [`DepthMotion/`](./DepthMotion) — its README explains how to run and build it.
+
+### Sentinel
+A lightweight antivirus that scans files and folders, watches for threats as they land, and moves anything dangerous into quarantine — on by default, nothing uploaded unless you ask.
+
+- Scan any file or folder, or drop something in and let it check on the spot.
+- Real-time guard: watches a folder and catches threats the moment they appear.
+- Catches and quarantines on its own — the threat is moved out of reach, not just flagged.
+- Safe Install: run an installer under close watch, so anything it tries is caught live.
+- Optional online check: paste your own free VirusTotal key to compare against 70+ engines.
+- Optional deep rules: fetches a large community threat-rule pack on demand.
+- Light on your PC: a plain Python engine, no account, no telemetry, nothing sent out.
+
+> Windows only. The online check is optional and needs your own free VirusTotal key. It never replaces Windows Security — run it alongside.
+
+**Runs on:** Windows · **Code:** [`Sentinel/`](./Sentinel) — its README explains how to run and build it.
 
 ## What else is in here
 - [`installer/`](./installer) — the superpack setup window (the screen where you pick your apps), for Windows and Mac.
